@@ -43,25 +43,50 @@ module.exports = {
                     .setCustomId(`edit_modal_${charToEdit._id}`)
                     .setTitle(`Modifier ${charToEdit.prenom} ${charToEdit.nom}`)
 
-                const fields = [
-                    { id: "nom", label: "Nom", value: charToEdit.nom },
-                    { id: "prenom", label: "Prénom", value: charToEdit.prenom },
-                    { id: "age", label: "Âge", value: charToEdit.age },
-                    { id: "sexe", label: "Sexe", value: charToEdit.sexe },
-                    { id: "orientation", label: "Orientation sexuelle", value: charToEdit.orientation },
-                    { id: "description", label: "Description", value: charToEdit.description },
-                    { id: "image", label: "URL de l'image", value: charToEdit.image },
-                ]
+                // ⚡ Champs fusionnés pour respecter la limite de 5 ActionRows
+                const inputNomPrenom = new TextInputBuilder()
+                    .setCustomId("nom_prenom")
+                    .setLabel("Nom et Prénom")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setValue(`${charToEdit.nom} ${charToEdit.prenom}`)
 
-                for(const f of fields) {
-                    const input = new TextInputBuilder()
-                        .setCustomId(f.id)
-                        .setLabel(f.label)
-                        .setStyle(f.id === "description" ? TextInputStyle.Paragraph : TextInputStyle.Short)
-                        .setRequired(true)
-                        .setValue(f.value)
-                    modal.addComponents(new ActionRowBuilder().addComponents(input))
-                }
+                const inputAge = new TextInputBuilder()
+                    .setCustomId("age")
+                    .setLabel("Âge")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setValue(charToEdit.age || "")
+
+                const inputGenre = new TextInputBuilder()
+                    .setCustomId("sexe")
+                    .setLabel("Genre")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setValue(charToEdit.sexe || "")
+
+                const inputOrientation = new TextInputBuilder()
+                    .setCustomId("orientation")
+                    .setLabel("Orientation sexuelle")
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setValue(charToEdit.orientation || "")
+
+                const inputDescription = new TextInputBuilder()
+                    .setCustomId("description")
+                    .setLabel("Description")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+                    .setValue(charToEdit.description || "")
+
+                // ⚡ Créer 5 ActionRows max
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(inputNomPrenom),
+                    new ActionRowBuilder().addComponents(inputAge),
+                    new ActionRowBuilder().addComponents(inputGenre),
+                    new ActionRowBuilder().addComponents(inputOrientation),
+                    new ActionRowBuilder().addComponents(inputDescription)
+                )
 
                 await i.showModal(modal)
             }
