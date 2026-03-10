@@ -4,16 +4,16 @@ const { MongoClient, ObjectId } = require("mongodb")
 const fs = require("fs")
 const path = require("path")
 
-// --- Vérification des variables d'environnement ---
-if (!process.env.TOKEN) {
-    console.error("❌ DISCORD_TOKEN n'est pas défini !")
-    process.exit(1)
-}
+console.log("🔹 Démarrage du bot...")
 
-if (!process.env.MONGO_URI) {
-    console.error("❌ MONGO_URI n'est pas défini !")
+// --- Vérification des variables d'environnement ---
+const requiredEnv = ["TOKEN", "MONGO_URI"]
+let missing = requiredEnv.filter(v => !process.env[v])
+if (missing.length > 0) {
+    console.error(`❌ Variables d'environnement manquantes : ${missing.join(", ")}`)
     process.exit(1)
 }
+console.log("✅ Toutes les variables d'environnement sont présentes.")
 
 // --- Client Discord ---
 const client = new Client({ intents: [GatewayIntentBits.Guilds] })
@@ -27,6 +27,7 @@ for (const file of commandFiles) {
     const command = require(`./commands/${file}`)
     client.commands.set(command.data.name, command)
 }
+console.log(`✅ ${commandFiles.length} commandes chargées.`)
 
 // --- Connexion MongoDB ---
 const mongoClient = new MongoClient(process.env.MONGO_URI)
@@ -52,50 +53,48 @@ client.once("ready", () => {
 // --- Event: interactionCreate ---
 client.on("interactionCreate", async interaction => {
     try {
-        // --- Slash commands ---
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName)
             if (!command) return
             await command.execute(interaction, client)
         }
 
-        // --- Modal submit pour /editperso ---
-        if (interaction.isModalSubmit()) {
-            if (interaction.customId.startsWith("edit_modal_")) {
-                const charId = interaction.customId.split("_")[2]
-                const characters = client.db.collection("characters")
+        if (interaction.isModalSubmit() && interaction.customId.startsWith("edit_modal_")) {
+            const charId = interaction.customId.split("_")[2]
+            const characters = client.db.collection("characters")
 
-                await characters.updateOne(
-                    { _id: new ObjectId(charId) },
-                    {
-                        $set: {
-                            nom: interaction.fields.getTextInputValue("nom"),
-                            prenom: interaction.fields.getTextInputValue("prenom"),
-                            age: interaction.fields.getTextInputValue("age"),
-                            sexe: interaction.fields.getTextInputValue("sexe"),
-                            orientation: interaction.fields.getTextInputValue("orientation"),
-                            description: interaction.fields.getTextInputValue("description"),
-                            image: interaction.fields.getTextInputValue("image")
-                        }
+            await characters.updateOne(
+                { _id: new ObjectId(charId) },
+                {
+                    $set: {
+                        nom: interaction.fields.getTextInputValue("nom"),
+                        prenom: interaction.fields.getTextInputValue("prenom"),
+                        age: interaction.fields.getTextInputValue("age"),
+                        sexe: interaction.fields.getTextInputValue("sexe"),
+                        orientation: interaction.fields.getTextInputValue("orientation"),
+                        description: interaction.fields.getTextInputValue("description"),
+                        image: interaction.fields.getTextInputValue("image")
                     }
-                )
+                }
+            )
 
-                await interaction.reply({ content: "✅ Personnage mis à jour !", ephemeral: true })
-            }
+            await interaction.reply({ content: "✅ Personnage mis à jour !", ephemeral: true })
         }
     } catch (err) {
         console.error("❌ Erreur interaction :", err)
         if (interaction.replied || interaction.deferred) {
-            interaction.editReply({ content: "❌ Une erreur est survenue." }).catch(() => { })
+            interaction.editReply({ content: "❌ Une erreur est survenue." }).catch(() => {})
         } else {
-            interaction.reply({ content: "❌ Une erreur est survenue.", ephemeral: true }).catch(() => { })
+            interaction.reply({ content: "❌ Une erreur est survenue.", ephemeral: true }).catch(() => {})
         }
     }
 })
 
 // --- Démarrage du bot ---
 async function startBot() {
+    console.log("🌐 Connexion à MongoDB...")
     await connectMongo()
+    console.log("🔐 Connexion au bot Discord...")
     client.login(process.env.TOKEN)
 }
 
