@@ -15,19 +15,19 @@ function characterEmbed(character, page, total) {
     return new EmbedBuilder()
         .setColor(COLORS.primary)
 
-        .setTitle(`╔══════════════════════╗
+        .setTitle(`╭────────────────────────────╮
    ⚔️ ${character.prenom} ${character.nom} ⚔️
-╚══════════════════════╝`)
+╰────────────────────────────╯`)
 
         .setDescription(`╭─────── 🧬 Informations ───────╮
 **Âge :** ${character.age || "Inconnu"}
 **Genre :** ${character.sexe || "Inconnu"}
 **Orientation :** ${character.orientation || "Inconnu"}
-╰──────────────────────────────╯
+╰────────────────────────────╯
 
 ╭─────── 📜 Description ───────╮
 ${character.description || "Aucune description"}
-╰──────────────────────────────╯`)
+╰────────────────────────────╯`)
 
         .setImage(character.image || null)
 
