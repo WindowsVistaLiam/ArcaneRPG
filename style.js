@@ -1,78 +1,68 @@
 const { EmbedBuilder } = require("discord.js")
 
-// 🌌 Couleurs Arcane RPG
+// 🎨 Couleurs Arcane RPG
 const COLORS = {
-    primary: 0x6a0dad,    // violet foncé
-    secondary: 0xffd700,  // or
-    danger: 0xff0000,     // rouge
-    success: 0x00ff00,    // vert
-    info: 0x1e90ff        // bleu ciel
+    primary: 0x6a0dad,
+    secondary: 0xffd700,
+    danger: 0xff0000,
+    success: 0x00ff00,
+    info: 0x1e90ff
 }
 
-// ⚡ Helper pour sécuriser les champs
-function safe(val, defaultVal = "Inconnu") {
-    return val && val !== "1" ? val : defaultVal
-}
-
-// ⚔️ Embed personnage
+// ⚔️ Embed personnage stylé RP
 function characterEmbed(character, page, total) {
+
     return new EmbedBuilder()
-        .setTitle(`✨ ${safe(character.prenom)} ${safe(character.nom)} ✨`)
-        .setDescription(safe(character.description, "Aucune description..."))
         .setColor(COLORS.primary)
-        .addFields(
-            { name: "🗓️ Âge", value: safe(character.age), inline: true },
-            { name: "⚧ Genre", value: safe(character.sexe), inline: true },
-            { name: "🏳️ Orientation", value: safe(character.orientation), inline: true }
-        )
-        .setFooter({ text: `Personnage ${page + 1} / ${total} | Arcane RPG ⚔️`, iconURL: "https://i.imgur.com/0XkHxHV.png" })
-        .setImage(character.image && character.image !== "1" ? character.image : null)
+
+        .setTitle(`╔══════════════════════╗
+   ⚔️ ${character.prenom} ${character.nom} ⚔️
+╚══════════════════════╝`)
+
+        .setDescription(`╭─────── 🧬 Informations ───────╮
+**Âge :** ${character.age || "Inconnu"}
+**Genre :** ${character.sexe || "Inconnu"}
+**Orientation :** ${character.orientation || "Inconnu"}
+╰──────────────────────────────╯
+
+╭─────── 📜 Description ───────╮
+${character.description || "Aucune description"}
+╰──────────────────────────────╯`)
+
+        .setImage(character.image || null)
+
+        .setFooter({
+            text: `╔ Page ${page + 1} / ${total} • Arcane RPG ⚔️ ╗`
+        })
+
         .setTimestamp()
 }
 
 // ✅ Embed succès
 function successEmbed(message) {
     return new EmbedBuilder()
-        .setTitle("✅ Succès !")
-        .setDescription(message)
         .setColor(COLORS.success)
+        .setTitle("╔═══════ ✅ Succès ═══════╗")
+        .setDescription(message)
         .setFooter({ text: "Arcane RPG ⚔️" })
 }
 
 // ❌ Embed erreur
 function errorEmbed(message) {
     return new EmbedBuilder()
-        .setTitle("❌ Erreur !")
-        .setDescription(message)
         .setColor(COLORS.danger)
+        .setTitle("╔═══════ ❌ Erreur ═══════╗")
+        .setDescription(message)
         .setFooter({ text: "Arcane RPG ⚔️" })
 }
 
 // ℹ️ Embed info
 function infoEmbed(message) {
     return new EmbedBuilder()
-        .setTitle("ℹ️ Info")
-        .setDescription(message)
         .setColor(COLORS.info)
+        .setTitle("╔═══════ ℹ️ Information ═══════╗")
+        .setDescription(message)
         .setFooter({ text: "Arcane RPG ⚔️" })
-}
-
-function characterEmbed(character, page, total) {
-    // Vérifie si c'est une URL valide
-    const imageUrl = character.image && character.image.startsWith("http") ? character.image : null
-
-    return new EmbedBuilder()
-        .setTitle(`✨ ${safe(character.prenom)} ${safe(character.nom)} ✨`)
-        .setDescription(safe(character.description, "Aucune description..."))
-        .setColor(COLORS.primary)
-        .addFields(
-            { name: "🗓️ Âge", value: safe(character.age), inline: true },
-            { name: "⚧ Genre", value: safe(character.sexe), inline: true },
-            { name: "🏳️ Orientation", value: safe(character.orientation), inline: true }
-        )
-        .setFooter({ text: `Personnage ${page + 1} / ${total} | Arcane RPG ⚔️`, iconURL: "https://i.imgur.com/0XkHxHV.png" })
-        .setImage(imageUrl) // ✅ URL valide ou null
-        .setTimestamp()
 }
 
 module.exports = {
