@@ -51,6 +51,25 @@ function infoEmbed(message) {
         .setFooter({ text: "Arcane RPG ⚔️" })
 }
 
+const { EmbedBuilder } = require("discord.js")
+
+function characterEmbed(character, page, total) {
+    return new EmbedBuilder()
+        .setTitle(`✨ ${character.name} ✨`) // Émojis décoratifs
+        .setDescription(character.description || "Aucune description...")
+        .setColor(0x5a2d82) // couleur violet-Arcane
+        .addFields(
+            { name: "Âge", value: character.age ? character.age.toString() : "Inconnu", inline: true },
+            { name: "Sexe", value: character.gender || "Inconnu", inline: true },
+            { name: "Orientation", value: character.orientation || "Inconnu", inline: true }
+        )
+        .setFooter({ text: `Page ${page + 1} / ${total}`, iconURL: "https://i.imgur.com/0XkHxHV.png" }) // petite icône stylée
+        .setImage(character.image || null) // image du personnage
+        .setTimestamp()
+}
+
+module.exports = { characterEmbed }
+
 module.exports = {
     COLORS,
     characterEmbed,
