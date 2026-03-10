@@ -29,8 +29,8 @@ for (const file of commandFiles) {
 }
 
 // --- Connexion MongoDB ---
-let db
 const mongoClient = new MongoClient(process.env.MONGO_URI)
+let db
 
 async function connectMongo() {
     try {
@@ -93,7 +93,7 @@ client.on("interactionCreate", async interaction => {
     }
 })
 
-// --- Démarrage ---
+// --- Démarrage du bot ---
 async function startBot() {
     await connectMongo()
     client.login(process.env.TOKEN)
