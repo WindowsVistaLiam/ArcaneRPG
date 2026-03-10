@@ -57,6 +57,24 @@ function infoEmbed(message) {
         .setFooter({ text: "Arcane RPG ⚔️" })
 }
 
+function characterEmbed(character, page, total) {
+    // Vérifie si c'est une URL valide
+    const imageUrl = character.image && character.image.startsWith("http") ? character.image : null
+
+    return new EmbedBuilder()
+        .setTitle(`✨ ${safe(character.prenom)} ${safe(character.nom)} ✨`)
+        .setDescription(safe(character.description, "Aucune description..."))
+        .setColor(COLORS.primary)
+        .addFields(
+            { name: "🗓️ Âge", value: safe(character.age), inline: true },
+            { name: "⚧ Genre", value: safe(character.sexe), inline: true },
+            { name: "🏳️ Orientation", value: safe(character.orientation), inline: true }
+        )
+        .setFooter({ text: `Personnage ${page + 1} / ${total} | Arcane RPG ⚔️`, iconURL: "https://i.imgur.com/0XkHxHV.png" })
+        .setImage(imageUrl) // ✅ URL valide ou null
+        .setTimestamp()
+}
+
 module.exports = {
     COLORS,
     characterEmbed,
