@@ -9,19 +9,25 @@ const COLORS = {
     info: 0x1e90ff        // bleu ciel
 }
 
+// ⚡ Helper pour sécuriser les champs
+function safe(val, defaultVal = "Inconnu") {
+    return val && val !== "1" ? val : defaultVal
+}
+
 // ⚔️ Embed personnage
 function characterEmbed(character, page, total) {
     return new EmbedBuilder()
-        .setTitle(`✨ ${character.prenom} ${character.nom} ✨`)
+        .setTitle(`✨ ${safe(character.prenom)} ${safe(character.nom)} ✨`)
+        .setDescription(safe(character.description, "Aucune description..."))
         .setColor(COLORS.primary)
         .addFields(
-            { name: "🗓️ Âge", value: character.age, inline: true },
-            { name: "⚧ Sexe", value: character.sexe, inline: true },
-            { name: "🏳️ Orientation", value: character.orientation, inline: true },
-            { name: "📝 Description", value: character.description }
+            { name: "🗓️ Âge", value: safe(character.age), inline: true },
+            { name: "⚧ Genre", value: safe(character.sexe), inline: true },
+            { name: "🏳️ Orientation", value: safe(character.orientation), inline: true }
         )
-        .setImage(character.image)
-        .setFooter({ text: `Personnage ${page+1}/${total} | Arcane RPG ⚔️` })
+        .setFooter({ text: `Personnage ${page + 1} / ${total} | Arcane RPG ⚔️`, iconURL: "https://i.imgur.com/0XkHxHV.png" })
+        .setImage(character.image && character.image !== "1" ? character.image : null)
+        .setTimestamp()
 }
 
 // ✅ Embed succès
@@ -50,25 +56,6 @@ function infoEmbed(message) {
         .setColor(COLORS.info)
         .setFooter({ text: "Arcane RPG ⚔️" })
 }
-
-const { EmbedBuilder } = require("discord.js")
-
-function characterEmbed(character, page, total) {
-    return new EmbedBuilder()
-        .setTitle(`✨ ${character.name} ✨`) // Émojis décoratifs
-        .setDescription(character.description || "Aucune description...")
-        .setColor(0x5a2d82) // couleur violet-Arcane
-        .addFields(
-            { name: "Âge", value: character.age ? character.age.toString() : "Inconnu", inline: true },
-            { name: "Sexe", value: character.gender || "Inconnu", inline: true },
-            { name: "Orientation", value: character.orientation || "Inconnu", inline: true }
-        )
-        .setFooter({ text: `Page ${page + 1} / ${total}`, iconURL: "https://i.imgur.com/0XkHxHV.png" }) // petite icône stylée
-        .setImage(character.image || null) // image du personnage
-        .setTimestamp()
-}
-
-module.exports = { characterEmbed }
 
 module.exports = {
     COLORS,
