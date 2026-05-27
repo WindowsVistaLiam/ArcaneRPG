@@ -16,6 +16,19 @@ function getCharacterName(character) {
   return `${character.prenom || ""} ${character.nom || ""}`.trim() || "Personnage sans nom";
 }
 
+function isValidObjectId(id) {
+  return ObjectId.isValid(id);
+}
+
+async function getSourceCharacter(client, sourceCharacterId, userId) {
+  if (!isValidObjectId(sourceCharacterId)) return null;
+
+  return client.db.collection("characters").findOne({
+    _id: new ObjectId(sourceCharacterId),
+    userId,
+  });
+}
+
 async function buildRelationEmbed(client, sourceCharacter) {
   const relationsCollection = client.db.collection("relations");
   const charactersCollection = client.db.collection("characters");
@@ -72,32 +85,71 @@ async function buildRelationEmbed(client, sourceCharacter) {
   return embed;
 }
 
-async function showRelationInterface(interaction, client, sourceCharacter) {
-  const embed = await buildRelationEmbed(client, sourceCharacter);
-
-  const row = new ActionRowBuilder().addComponents(
+function buildMainButtons(sourceCharacterId) {
+  return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`relation:add:${sourceCharacter._id.toString()}`)
-      .setLabel("Ajouter une relation")
+      .setCustomId(`relation:add:${sourceCharacterId}`)
+      .setLabel("Ajouter")
       .setStyle(ButtonStyle.Primary),
 
     new ButtonBuilder()
-      .setCustomId(`relation:refresh:${sourceCharacter._id.toString()}`)
+      .setCustomId(`relation:edit:${sourceCharacterId}`)
+      .setLabel("Modifier")
+      .setStyle(ButtonStyle.Secondary),
+
+    new ButtonBuilder()
+      .setCustomId(`relation:delete:${sourceCharacterId}`)
+      .setLabel("Supprimer")
+      .setStyle(ButtonStyle.Danger),
+
+    new ButtonBuilder()
+      .setCustomId(`relation:refresh:${sourceCharacterId}`)
       .setLabel("Actualiser")
       .setStyle(ButtonStyle.Secondary)
   );
+}
 
-  if (interaction.replied || interaction.deferred) {
-    return interaction.editReply({
-      embeds: [embed],
-      components: [row],
-    });
-  }
+async function showRelationInterface(interaction, client, sourceCharacter) {
+  const embed = await buildRelationEmbed(client, sourceCharacter);
+  const row = buildMainButtons(sourceCharacter._id.toString());
 
-  return interaction.reply({
+  return interaction.update({
+    content: "",
     embeds: [embed],
     components: [row],
-    ephemeral: true,
+  });
+}
+
+async function getRelationsForMenu(client, sourceCharacterId) {
+  const relations = await client.db.collection("relations")
+    .find({ sourceCharacterId: new ObjectId(sourceCharacterId) })
+    .sort({ createdAt: -1 })
+    .limit(25)
+    .toArray();
+
+  if (!relations.length) return [];
+
+  const targetIds = relations.map((relation) => relation.targetCharacterId);
+
+  const targetCharacters = await client.db.collection("characters")
+    .find({ _id: { $in: targetIds } })
+    .toArray();
+
+  const targetMap = new Map(
+    targetCharacters.map((character) => [character._id.toString(), character])
+  );
+
+  return relations.map((relation) => {
+    const targetCharacter = targetMap.get(relation.targetCharacterId.toString());
+    const targetName = targetCharacter
+      ? getCharacterName(targetCharacter)
+      : "Personnage supprimé";
+
+    return {
+      label: targetName.slice(0, 100),
+      description: relation.label.slice(0, 100),
+      value: relation._id.toString(),
+    };
   });
 }
 
@@ -143,10 +195,11 @@ module.exports = {
     if (interaction.customId === "relation:select-source") {
       const sourceCharacterId = interaction.values[0];
 
-      const sourceCharacter = await client.db.collection("characters").findOne({
-        _id: new ObjectId(sourceCharacterId),
-        userId: interaction.user.id,
-      });
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
 
       if (!sourceCharacter) {
         return interaction.reply({
@@ -156,18 +209,7 @@ module.exports = {
       }
 
       const embed = await buildRelationEmbed(client, sourceCharacter);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`relation:add:${sourceCharacter._id.toString()}`)
-          .setLabel("Ajouter une relation")
-          .setStyle(ButtonStyle.Primary),
-
-        new ButtonBuilder()
-          .setCustomId(`relation:refresh:${sourceCharacter._id.toString()}`)
-          .setLabel("Actualiser")
-          .setStyle(ButtonStyle.Secondary)
-      );
+      const row = buildMainButtons(sourceCharacter._id.toString());
 
       return interaction.update({
         content: "",
@@ -180,10 +222,11 @@ module.exports = {
       const sourceCharacterId = interaction.customId.replace("relation:select-target:", "");
       const targetCharacterId = interaction.values[0];
 
-      const sourceCharacter = await client.db.collection("characters").findOne({
-        _id: new ObjectId(sourceCharacterId),
-        userId: interaction.user.id,
-      });
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
 
       if (!sourceCharacter) {
         return interaction.reply({
@@ -204,7 +247,7 @@ module.exports = {
       }
 
       const modal = new ModalBuilder()
-        .setCustomId(`relation:modal:${sourceCharacterId}:${targetCharacterId}`)
+        .setCustomId(`relation:modal:add:${sourceCharacterId}:${targetCharacterId}`)
         .setTitle("Définir la relation");
 
       const relationInput = new TextInputBuilder()
@@ -215,11 +258,113 @@ module.exports = {
         .setMaxLength(80)
         .setRequired(true);
 
-      const row = new ActionRowBuilder().addComponents(relationInput);
-
-      modal.addComponents(row);
+      modal.addComponents(new ActionRowBuilder().addComponents(relationInput));
 
       return interaction.showModal(modal);
+    }
+
+    if (interaction.customId.startsWith("relation:select-edit:")) {
+      const sourceCharacterId = interaction.customId.replace("relation:select-edit:", "");
+      const relationId = interaction.values[0];
+
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
+
+      if (!sourceCharacter) {
+        return interaction.reply({
+          content: "❌ Personnage introuvable ou non autorisé.",
+          ephemeral: true,
+        });
+      }
+
+      const relation = await client.db.collection("relations").findOne({
+        _id: new ObjectId(relationId),
+        sourceCharacterId: new ObjectId(sourceCharacterId),
+        sourceUserId: interaction.user.id,
+      });
+
+      if (!relation) {
+        return interaction.reply({
+          content: "❌ Relation introuvable ou non autorisée.",
+          ephemeral: true,
+        });
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId(`relation:modal:edit:${relationId}`)
+        .setTitle("Modifier la relation");
+
+      const relationInput = new TextInputBuilder()
+        .setCustomId("relation_label")
+        .setLabel("Nouveau nom de la relation")
+        .setValue(relation.label || "")
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(80)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(relationInput));
+
+      return interaction.showModal(modal);
+    }
+
+    if (interaction.customId.startsWith("relation:select-delete:")) {
+      const sourceCharacterId = interaction.customId.replace("relation:select-delete:", "");
+      const relationId = interaction.values[0];
+
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
+
+      if (!sourceCharacter) {
+        return interaction.reply({
+          content: "❌ Personnage introuvable ou non autorisé.",
+          ephemeral: true,
+        });
+      }
+
+      const relation = await client.db.collection("relations").findOne({
+        _id: new ObjectId(relationId),
+        sourceCharacterId: new ObjectId(sourceCharacterId),
+        sourceUserId: interaction.user.id,
+      });
+
+      if (!relation) {
+        return interaction.reply({
+          content: "❌ Relation introuvable ou non autorisée.",
+          ephemeral: true,
+        });
+      }
+
+      const targetCharacter = await client.db.collection("characters").findOne({
+        _id: relation.targetCharacterId,
+      });
+
+      const targetName = targetCharacter
+        ? getCharacterName(targetCharacter)
+        : "Personnage supprimé";
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`relation:confirm-delete:${relationId}`)
+          .setLabel("Confirmer la suppression")
+          .setStyle(ButtonStyle.Danger),
+
+        new ButtonBuilder()
+          .setCustomId(`relation:cancel-delete:${sourceCharacterId}`)
+          .setLabel("Annuler")
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      return interaction.reply({
+        content: `⚠️ Supprimer la relation avec **${targetName}** : **${relation.label}** ?`,
+        components: [row],
+        ephemeral: true,
+      });
     }
   },
 
@@ -227,10 +372,11 @@ module.exports = {
     if (interaction.customId.startsWith("relation:add:")) {
       const sourceCharacterId = interaction.customId.replace("relation:add:", "");
 
-      const sourceCharacter = await client.db.collection("characters").findOne({
-        _id: new ObjectId(sourceCharacterId),
-        userId: interaction.user.id,
-      });
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
 
       if (!sourceCharacter) {
         return interaction.reply({
@@ -275,13 +421,128 @@ module.exports = {
       });
     }
 
+    if (interaction.customId.startsWith("relation:edit:")) {
+      const sourceCharacterId = interaction.customId.replace("relation:edit:", "");
+
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
+
+      if (!sourceCharacter) {
+        return interaction.reply({
+          content: "❌ Personnage introuvable ou non autorisé.",
+          ephemeral: true,
+        });
+      }
+
+      const options = await getRelationsForMenu(client, sourceCharacterId);
+
+      if (!options.length) {
+        return interaction.reply({
+          content: "❌ Ce personnage n'a aucune relation à modifier.",
+          ephemeral: true,
+        });
+      }
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`relation:select-edit:${sourceCharacterId}`)
+        .setPlaceholder("Choisis la relation à modifier")
+        .addOptions(options);
+
+      return interaction.reply({
+        content: "Choisis la relation à modifier :",
+        components: [new ActionRowBuilder().addComponents(selectMenu)],
+        ephemeral: true,
+      });
+    }
+
+    if (interaction.customId.startsWith("relation:delete:")) {
+      const sourceCharacterId = interaction.customId.replace("relation:delete:", "");
+
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
+
+      if (!sourceCharacter) {
+        return interaction.reply({
+          content: "❌ Personnage introuvable ou non autorisé.",
+          ephemeral: true,
+        });
+      }
+
+      const options = await getRelationsForMenu(client, sourceCharacterId);
+
+      if (!options.length) {
+        return interaction.reply({
+          content: "❌ Ce personnage n'a aucune relation à supprimer.",
+          ephemeral: true,
+        });
+      }
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`relation:select-delete:${sourceCharacterId}`)
+        .setPlaceholder("Choisis la relation à supprimer")
+        .addOptions(options);
+
+      return interaction.reply({
+        content: "Choisis la relation à supprimer :",
+        components: [new ActionRowBuilder().addComponents(selectMenu)],
+        ephemeral: true,
+      });
+    }
+
+    if (interaction.customId.startsWith("relation:confirm-delete:")) {
+      const relationId = interaction.customId.replace("relation:confirm-delete:", "");
+
+      if (!isValidObjectId(relationId)) {
+        return interaction.reply({
+          content: "❌ Relation invalide.",
+          ephemeral: true,
+        });
+      }
+
+      const relation = await client.db.collection("relations").findOne({
+        _id: new ObjectId(relationId),
+        sourceUserId: interaction.user.id,
+      });
+
+      if (!relation) {
+        return interaction.reply({
+          content: "❌ Relation introuvable ou non autorisée.",
+          ephemeral: true,
+        });
+      }
+
+      await client.db.collection("relations").deleteOne({
+        _id: new ObjectId(relationId),
+        sourceUserId: interaction.user.id,
+      });
+
+      return interaction.update({
+        content: "✅ Relation supprimée.",
+        components: [],
+      });
+    }
+
+    if (interaction.customId.startsWith("relation:cancel-delete:")) {
+      return interaction.update({
+        content: "Suppression annulée.",
+        components: [],
+      });
+    }
+
     if (interaction.customId.startsWith("relation:refresh:")) {
       const sourceCharacterId = interaction.customId.replace("relation:refresh:", "");
 
-      const sourceCharacter = await client.db.collection("characters").findOne({
-        _id: new ObjectId(sourceCharacterId),
-        userId: interaction.user.id,
-      });
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
 
       if (!sourceCharacter) {
         return interaction.reply({
@@ -291,18 +552,7 @@ module.exports = {
       }
 
       const embed = await buildRelationEmbed(client, sourceCharacter);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`relation:add:${sourceCharacter._id.toString()}`)
-          .setLabel("Ajouter une relation")
-          .setStyle(ButtonStyle.Primary),
-
-        new ButtonBuilder()
-          .setCustomId(`relation:refresh:${sourceCharacter._id.toString()}`)
-          .setLabel("Actualiser")
-          .setStyle(ButtonStyle.Secondary)
-      );
+      const row = buildMainButtons(sourceCharacter._id.toString());
 
       return interaction.update({
         embeds: [embed],
@@ -315,60 +565,102 @@ module.exports = {
     if (!interaction.customId.startsWith("relation:modal:")) return;
 
     const parts = interaction.customId.split(":");
-    const sourceCharacterId = parts[2];
-    const targetCharacterId = parts[3];
+    const action = parts[2];
 
-    const label = interaction.fields.getTextInputValue("relation_label").trim();
+    if (action === "add") {
+      const sourceCharacterId = parts[3];
+      const targetCharacterId = parts[4];
 
-    const sourceCharacter = await client.db.collection("characters").findOne({
-      _id: new ObjectId(sourceCharacterId),
-      userId: interaction.user.id,
-    });
+      const label = interaction.fields.getTextInputValue("relation_label").trim();
 
-    if (!sourceCharacter) {
-      return interaction.reply({
-        content: "❌ Personnage source introuvable ou non autorisé.",
-        ephemeral: true,
-      });
-    }
+      const sourceCharacter = await getSourceCharacter(
+        client,
+        sourceCharacterId,
+        interaction.user.id
+      );
 
-    const targetCharacter = await client.db.collection("characters").findOne({
-      _id: new ObjectId(targetCharacterId),
-    });
-
-    if (!targetCharacter) {
-      return interaction.reply({
-        content: "❌ Personnage cible introuvable.",
-        ephemeral: true,
-      });
-    }
-
-    await client.db.collection("relations").updateOne(
-      {
-        sourceCharacterId: new ObjectId(sourceCharacterId),
-        targetCharacterId: new ObjectId(targetCharacterId),
-      },
-      {
-        $set: {
-          sourceCharacterId: new ObjectId(sourceCharacterId),
-          sourceUserId: interaction.user.id,
-          targetCharacterId: new ObjectId(targetCharacterId),
-          targetUserId: targetCharacter.userId,
-          label,
-          updatedAt: new Date(),
-        },
-        $setOnInsert: {
-          createdAt: new Date(),
-        },
-      },
-      {
-        upsert: true,
+      if (!sourceCharacter) {
+        return interaction.reply({
+          content: "❌ Personnage source introuvable ou non autorisé.",
+          ephemeral: true,
+        });
       }
-    );
 
-    return interaction.reply({
-      content: `✅ Relation ajoutée : **${getCharacterName(sourceCharacter)}** → **${getCharacterName(targetCharacter)}** : ${label}`,
-      ephemeral: true,
-    });
+      const targetCharacter = await client.db.collection("characters").findOne({
+        _id: new ObjectId(targetCharacterId),
+      });
+
+      if (!targetCharacter) {
+        return interaction.reply({
+          content: "❌ Personnage cible introuvable.",
+          ephemeral: true,
+        });
+      }
+
+      await client.db.collection("relations").updateOne(
+        {
+          sourceCharacterId: new ObjectId(sourceCharacterId),
+          targetCharacterId: new ObjectId(targetCharacterId),
+        },
+        {
+          $set: {
+            sourceCharacterId: new ObjectId(sourceCharacterId),
+            sourceUserId: interaction.user.id,
+            targetCharacterId: new ObjectId(targetCharacterId),
+            targetUserId: targetCharacter.userId,
+            label,
+            updatedAt: new Date(),
+          },
+          $setOnInsert: {
+            createdAt: new Date(),
+          },
+        },
+        {
+          upsert: true,
+        }
+      );
+
+      return interaction.reply({
+        content: `✅ Relation ajoutée : **${getCharacterName(sourceCharacter)}** → **${getCharacterName(targetCharacter)}** : ${label}`,
+        ephemeral: true,
+      });
+    }
+
+    if (action === "edit") {
+      const relationId = parts[3];
+      const label = interaction.fields.getTextInputValue("relation_label").trim();
+
+      if (!isValidObjectId(relationId)) {
+        return interaction.reply({
+          content: "❌ Relation invalide.",
+          ephemeral: true,
+        });
+      }
+
+      const result = await client.db.collection("relations").updateOne(
+        {
+          _id: new ObjectId(relationId),
+          sourceUserId: interaction.user.id,
+        },
+        {
+          $set: {
+            label,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        return interaction.reply({
+          content: "❌ Relation introuvable ou non autorisée.",
+          ephemeral: true,
+        });
+      }
+
+      return interaction.reply({
+        content: `✅ Relation modifiée : **${label}**`,
+        ephemeral: true,
+      });
+    }
   },
 };
