@@ -1,14 +1,27 @@
-const { SlashCommandBuilder, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js")
-const { characterEmbed } = require("../style")  // <-- style Arcane
+const {
+    SlashCommandBuilder,
+    ButtonBuilder,
+    ActionRowBuilder,
+    ButtonStyle
+} = require("discord.js")
+
+const { characterEmbed } = require("../style")
+
+async function getPopularityScore(client, characterId) {
+    return await client.db.collection("popularity_votes").countDocuments({
+        characterId: characterId,
+        value: 1
+    })
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("profil")
         .setDescription("Voir vos personnages ou ceux d'un autre utilisateur")
-        .addUserOption(option => 
+        .addUserOption(option =>
             option.setName("utilisateur")
-                  .setDescription("Utilisateur dont vous voulez voir le profil")
-                  .setRequired(false)
+                .setDescription("Utilisateur dont vous voulez voir le profil")
+                .setRequired(false)
         ),
 
     async execute(interaction, client) {
@@ -21,47 +34,87 @@ module.exports = {
             const msg = user.id === interaction.user.id
                 ? "Tu n'as aucun personnage."
                 : `${user.username} n'a aucun personnage.`
-            return interaction.reply({ content: msg, ephemeral: true })
+
+            return interaction.reply({
+                content: msg,
+                ephemeral: true
+            })
         }
 
         let page = 0
 
         // --- Boutons de navigation ---
-        const prev = new ButtonBuilder().setCustomId("prev").setLabel("⬅️").setStyle(ButtonStyle.Primary)
-        const next = new ButtonBuilder().setCustomId("next").setLabel("➡️").setStyle(ButtonStyle.Primary)
+        const prev = new ButtonBuilder()
+            .setCustomId("profil_prev")
+            .setLabel("⬅️")
+            .setStyle(ButtonStyle.Primary)
+
+        const next = new ButtonBuilder()
+            .setCustomId("profil_next")
+            .setLabel("➡️")
+            .setStyle(ButtonStyle.Primary)
+
         const row = new ActionRowBuilder().addComponents(prev, next)
 
-        // --- Fonction pour générer l'embed ---
-        const generateEmbed = () => characterEmbed(persos[page], page, persos.length)
+        // --- Fonction pour générer l'embed avec la popularité ---
+        const generateEmbed = async () => {
+            const perso = persos[page]
+            const embed = characterEmbed(perso, page, persos.length)
 
-        // ⚡️ deferReply pour gérer le temps de traitement
+            const popularityScore = await getPopularityScore(client, perso._id)
+
+            embed.addFields({
+                name: "Popularité",
+                value: `⭐ ${popularityScore} vote${popularityScore > 1 ? "s" : ""}`,
+                inline: true
+            })
+
+            return embed
+        }
+
         await interaction.deferReply()
 
-        // ⚡️ Envoi initial de l'embed
         const msg = await interaction.editReply({
-            embeds: [generateEmbed()],
+            embeds: [await generateEmbed()],
             components: [row]
         })
 
         // --- Collector pour les boutons ---
-        const collector = msg.createMessageComponentCollector({ time: 60000 })
+        const collector = msg.createMessageComponentCollector({
+            time: 60000
+        })
 
-        collector.on("collect", i => {
-            if (i.user.id !== interaction.user.id) return
+        collector.on("collect", async i => {
+            if (i.user.id !== interaction.user.id) {
+                return i.reply({
+                    content: "❌ Tu ne peux pas utiliser les boutons de ce profil.",
+                    ephemeral: true
+                })
+            }
 
-            if (i.customId === "prev") page = page > 0 ? page - 1 : persos.length - 1
-            if (i.customId === "next") page = page + 1 < persos.length ? page + 1 : 0
+            if (i.customId === "profil_prev") {
+                page = page > 0 ? page - 1 : persos.length - 1
+            }
 
-            i.update({ embeds: [generateEmbed()] })
+            if (i.customId === "profil_next") {
+                page = page + 1 < persos.length ? page + 1 : 0
+            }
+
+            await i.update({
+                embeds: [await generateEmbed()],
+                components: [row]
+            })
         })
 
         collector.on("end", () => {
-            // Désactiver les boutons après expiration
             const disabledRow = new ActionRowBuilder().addComponents(
-                prev.setDisabled(true),
-                next.setDisabled(true)
+                ButtonBuilder.from(prev).setDisabled(true),
+                ButtonBuilder.from(next).setDisabled(true)
             )
-            interaction.editReply({ components: [disabledRow] }).catch(() => {})
+
+            interaction.editReply({
+                components: [disabledRow]
+            }).catch(() => {})
         })
     }
 }
