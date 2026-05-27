@@ -1,33 +1,59 @@
-require("dotenv").config()
-const { REST, Routes } = require("discord.js")
-const fs = require("fs")
-const path = require("path")
+require("dotenv").config();
 
-// --- Récupérer toutes les commandes ---
-const commands = []
-const commandFiles = fs.readdirSync(path.join(__dirname, "commands")).filter(f => f.endsWith(".js"))
+const { REST, Routes } = require("discord.js");
+const fs = require("fs");
+const path = require("path");
 
-for (const file of commandFiles) {
-    const command = require(`./commands/${file}`)
-    commands.push(command.data.toJSON())
+// --- Vérification des variables d'environnement ---
+const requiredEnv = ["TOKEN", "CLIENT_ID"];
+const missing = requiredEnv.filter((v) => !process.env[v]);
+
+if (missing.length > 0) {
+  console.error(`❌ Variables d'environnement manquantes : ${missing.join(", ")}`);
+  process.exit(1);
 }
 
-// --- Créer le client REST et définir le token correctement ---
-const rest = new REST({ version: "10" })
-rest.setToken(process.env.TOKEN) // ⚠️ doit être sur une ligne séparée
+// --- Récupérer toutes les commandes ---
+const commands = [];
+const commandsPath = path.join(__dirname, "commands");
+const commandFiles = fs
+  .readdirSync(commandsPath)
+  .filter((f) => f.endsWith(".js"));
 
-;(async () => {
-    try {
-        console.log("Déploiement des commandes...")
+console.log(`📁 Fichiers trouvés dans commands : ${commandFiles.join(", ")}`);
 
-        // Déploiement global (prendre en compte que les commandes peuvent mettre jusqu'à 1h pour apparaître)
-        await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            { body: commands }
-        )
+for (const file of commandFiles) {
+  try {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
 
-        console.log("Commandes déployées ✅")
-    } catch (error) {
-        console.error("Erreur lors du déploiement des commandes :", error)
+    if (!command.data || !command.data.name) {
+      console.warn(`⚠️ Commande ignorée : ${file} — data.name manquant`);
+      continue;
     }
-})()
+
+    commands.push(command.data.toJSON());
+    console.log(`✅ Commande chargée : /${command.data.name}`);
+  } catch (error) {
+    console.error(`❌ Erreur lors du chargement de ${file} :`, error);
+  }
+}
+
+// --- Créer le client REST ---
+const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
+(async () => {
+  try {
+    console.log(`🚀 Déploiement de ${commands.length} commandes...`);
+    console.log(`CLIENT_ID utilisé : ${process.env.CLIENT_ID}`);
+
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands }
+    );
+
+    console.log("✅ Commandes déployées avec succès !");
+  } catch (error) {
+    console.error("❌ Erreur lors du déploiement des commandes :", error);
+  }
+})();
