@@ -14,6 +14,12 @@ async function getPopularityScore(client, characterId) {
     })
 }
 
+async function getRelationsCount(client, characterId) {
+    return await client.db.collection("relations").countDocuments({
+        sourceCharacterId: characterId
+    })
+}
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("profil")
@@ -66,6 +72,13 @@ module.exports = {
             embed.addFields({
                 name: "Popularité",
                 value: `⭐ ${popularityScore} vote${popularityScore > 1 ? "s" : ""}`,
+                inline: true
+            })
+            const relationsCount = await getRelationsCount(client, perso._id)
+
+            embed.addFields({
+                name: "Relations",
+                value: `🔗 ${relationsCount} relation${relationsCount > 1 ? "s" : ""}`,
                 inline: true
             })
 
