@@ -20,8 +20,14 @@ console.log("✅ Toutes les variables d'environnement sont présentes.");
 
 // --- Client Discord ---
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
-});
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildModeration
+    ]
+})
 
 client.commands = new Collection();
 
