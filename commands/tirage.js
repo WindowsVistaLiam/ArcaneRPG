@@ -3,7 +3,7 @@ const {
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
 } = require("discord.js")
 
 const arcaneCards = require("../data/arcaneCards")
@@ -13,7 +13,7 @@ const RARITY_WEIGHTS = {
   rare: 25,
   epic: 12,
   legendary: 6,
-  mythic: 2
+  mythic: 2,
 }
 
 const RARITY_COLORS = {
@@ -21,7 +21,7 @@ const RARITY_COLORS = {
   rare: 0x3498db,
   epic: 0x9b59b6,
   legendary: 0xf1c40f,
-  mythic: 0xe74c3c
+  mythic: 0xe74c3c,
 }
 
 function pickRandomCard() {
@@ -38,7 +38,17 @@ function pickRandomCard() {
   return weightedCards[Math.floor(Math.random() * weightedCards.length)]
 }
 
-function buildCardEmbed(card) {
+function generateTenCards() {
+  const cards = []
+
+  for (let i = 0; i < 10; i++) {
+    cards.push(pickRandomCard())
+  }
+
+  return cards
+}
+
+function buildCardEmbed(card, index, total, claimed) {
   const embed = new EmbedBuilder()
     .setTitle(`🎴 ${card.name}`)
     .setDescription(card.description || "Carte Arcane")
@@ -47,15 +57,27 @@ function buildCardEmbed(card) {
       {
         name: "Rareté",
         value: card.rarityLabel || card.rarity,
-        inline: true
+        inline: true,
       },
       {
         name: "Valeur",
         value: `${card.value} pts`,
-        inline: true
+        inline: true,
+      },
+      {
+        name: "Progression",
+        value: `Carte ${index + 1}/${total}`,
+        inline: true,
+      },
+      {
+        name: "Statut",
+        value: claimed ? "✅ Carte déjà claim" : "🟢 Disponible",
+        inline: true,
       }
     )
-    .setFooter({ text: "Mini-jeu de collection Arcane" })
+    .setFooter({
+      text: "Mini-jeu de collection Arcane",
+    })
     .setTimestamp()
 
   if (card.image) {
@@ -65,88 +87,243 @@ function buildCardEmbed(card) {
   return embed
 }
 
+function buildButtons(sessionId, index, total, claimed) {
+  const previousButton = new ButtonBuilder()
+    .setCustomId(`tirage:previous:${sessionId}`)
+    .setLabel("⬅️ Précédente")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(index === 0)
+
+  const claimButton = new ButtonBuilder()
+    .setCustomId(`tirage:claim:${sessionId}`)
+    .setLabel(claimed ? "Claimed" : "Claim")
+    .setStyle(claimed ? ButtonStyle.Secondary : ButtonStyle.Success)
+    .setDisabled(claimed)
+
+  const nextButton = new ButtonBuilder()
+    .setCustomId(`tirage:next:${sessionId}`)
+    .setLabel("Suivante ➡️")
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(index === total - 1)
+
+  return new ActionRowBuilder().addComponents(
+    previousButton,
+    claimButton,
+    nextButton
+  )
+}
+
+async function renderSession(interaction, client, session) {
+  const index = session.currentIndex
+  const card = session.cards[index]
+  const claimed = session.claimedIndexes.includes(index)
+
+  const embed = buildCardEmbed(
+    card,
+    index,
+    session.cards.length,
+    claimed
+  )
+
+  const row = buildButtons(
+    session._id.toString(),
+    index,
+    session.cards.length,
+    claimed
+  )
+
+  return interaction.update({
+    embeds: [embed],
+    components: [row],
+  })
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("tirage")
-    .setDescription("Faire un tirage de carte Arcane"),
+    .setDescription("Faire un tirage de 10 cartes Arcane"),
 
   async execute(interaction, client) {
-    const card = pickRandomCard()
+    const cards = generateTenCards()
 
-    const alreadyOwned = await client.db.collection("player_cards").findOne({
+    const session = {
       userId: interaction.user.id,
-      cardKey: card.key
-    })
+      cards,
+      currentIndex: 0,
+      claimedIndexes: [],
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    }
 
-    const embed = buildCardEmbed(card)
+    const result = await client.db.collection("tirage_sessions").insertOne(session)
 
-    const claimButton = new ButtonBuilder()
-      .setCustomId(`tirage:claim:${card.key}`)
-      .setLabel(alreadyOwned ? "Déjà possédée" : "Claim")
-      .setStyle(alreadyOwned ? ButtonStyle.Secondary : ButtonStyle.Success)
-      .setDisabled(Boolean(alreadyOwned))
+    const savedSession = {
+      ...session,
+      _id: result.insertedId,
+    }
 
-    const row = new ActionRowBuilder().addComponents(claimButton)
+    const firstCard = savedSession.cards[0]
+
+    const embed = buildCardEmbed(
+      firstCard,
+      0,
+      savedSession.cards.length,
+      false
+    )
+
+    const row = buildButtons(
+      savedSession._id.toString(),
+      0,
+      savedSession.cards.length,
+      false
+    )
 
     return interaction.reply({
+      content: "🎲 Tirage de 10 cartes lancé.",
       embeds: [embed],
-      components: [row]
+      components: [row],
     })
   },
 
   async handleButton(interaction, client) {
-    if (!interaction.customId.startsWith("tirage:claim:")) return
+    if (!interaction.customId.startsWith("tirage:")) return
 
-    const cardKey = interaction.customId.replace("tirage:claim:", "")
-    const card = arcaneCards.find((c) => c.key === cardKey)
+    const parts = interaction.customId.split(":")
+    const action = parts[1]
+    const sessionId = parts[2]
 
-    if (!card) {
+    const { ObjectId } = require("mongodb")
+
+    if (!ObjectId.isValid(sessionId)) {
       return interaction.reply({
-        content: "❌ Carte introuvable dans le catalogue.",
-        ephemeral: true
+        content: "❌ Session de tirage invalide.",
+        ephemeral: true,
       })
     }
 
-    const existingCard = await client.db.collection("player_cards").findOne({
-      userId: interaction.user.id,
-      cardKey: card.key
+    const sessions = client.db.collection("tirage_sessions")
+
+    const session = await sessions.findOne({
+      _id: new ObjectId(sessionId),
     })
 
-    if (existingCard) {
+    if (!session) {
       return interaction.reply({
-        content: "❌ Tu possèdes déjà cette carte.",
-        ephemeral: true
+        content: "❌ Ce tirage n'existe plus.",
+        ephemeral: true,
       })
     }
 
-    await client.db.collection("player_cards").insertOne({
-      userId: interaction.user.id,
-      cardKey: card.key,
-      cardName: card.name,
-      rarity: card.rarity,
-      rarityLabel: card.rarityLabel,
-      value: card.value,
-      image: card.image,
-      claimedAt: new Date(),
-      favorite: false,
-      locked: false
-    })
+    if (session.userId !== interaction.user.id) {
+      return interaction.reply({
+        content: "❌ Seul le joueur qui a lancé ce tirage peut utiliser ces boutons.",
+        ephemeral: true,
+      })
+    }
 
-    const disabledButton = new ButtonBuilder()
-      .setCustomId(`tirage:claimed:${card.key}`)
-      .setLabel("Claimed")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(true)
+    if (session.expiresAt && new Date(session.expiresAt).getTime() < Date.now()) {
+      return interaction.reply({
+        content: "❌ Ce tirage a expiré.",
+        ephemeral: true,
+      })
+    }
 
-    const row = new ActionRowBuilder().addComponents(disabledButton)
+    if (action === "previous") {
+      const newIndex = Math.max(0, session.currentIndex - 1)
 
-    await interaction.update({
-      components: [row]
-    })
+      await sessions.updateOne(
+        { _id: new ObjectId(sessionId) },
+        {
+          $set: {
+            currentIndex: newIndex,
+          },
+        }
+      )
 
-    return interaction.followUp({
-      content: `✅ Tu as ajouté **${card.name}** à ta collection !`,
-      ephemeral: true
-    })
-  }
+      session.currentIndex = newIndex
+
+      return renderSession(interaction, client, session)
+    }
+
+    if (action === "next") {
+      const newIndex = Math.min(session.cards.length - 1, session.currentIndex + 1)
+
+      await sessions.updateOne(
+        { _id: new ObjectId(sessionId) },
+        {
+          $set: {
+            currentIndex: newIndex,
+          },
+        }
+      )
+
+      session.currentIndex = newIndex
+
+      return renderSession(interaction, client, session)
+    }
+
+    if (action === "claim") {
+      const index = session.currentIndex
+      const card = session.cards[index]
+
+      if (session.claimedIndexes.includes(index)) {
+        return interaction.reply({
+          content: "❌ Tu as déjà claim cette carte.",
+          ephemeral: true,
+        })
+      }
+
+      await client.db.collection("player_cards").insertOne({
+        userId: interaction.user.id,
+        cardKey: card.key,
+        cardName: card.name,
+        rarity: card.rarity,
+        rarityLabel: card.rarityLabel,
+        value: card.value,
+        image: card.image,
+        description: card.description || "",
+        source: "tirage",
+        tirageSessionId: new ObjectId(sessionId),
+        tirageIndex: index,
+        claimedAt: new Date(),
+        favorite: false,
+        locked: false,
+      })
+
+      await sessions.updateOne(
+        { _id: new ObjectId(sessionId) },
+        {
+          $addToSet: {
+            claimedIndexes: index,
+          },
+        }
+      )
+
+      session.claimedIndexes.push(index)
+
+      const embed = buildCardEmbed(
+        card,
+        index,
+        session.cards.length,
+        true
+      )
+
+      const row = buildButtons(
+        session._id.toString(),
+        index,
+        session.cards.length,
+        true
+      )
+
+      await interaction.update({
+        embeds: [embed],
+        components: [row],
+      })
+
+      return interaction.followUp({
+        content: `✅ Tu as claim **${card.name}** !`,
+        ephemeral: true,
+      })
+    }
+  },
 }
