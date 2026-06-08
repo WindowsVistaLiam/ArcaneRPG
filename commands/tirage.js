@@ -27,6 +27,14 @@ const RARITY_COLORS = {
   mythic: 0xe74c3c,
 }
 
+const FRAGMENTS_BY_RARITY = {
+  common: 1,
+  rare: 4,
+  epic: 12,
+  legendary: 35,
+  mythic: 100,
+}
+
 function formatRemainingTime(ms) {
   const totalMinutes = Math.ceil(ms / 60000)
   const hours = Math.floor(totalMinutes / 60)
@@ -111,7 +119,112 @@ function generateTenCards() {
   return cards
 }
 
-function buildCardEmbed(card, index, total, claimed) {
+async function processTirageCards(client, userId, cards) {
+  const playerCardsCollection = client.db.collection("player_cards")
+  const walletsCollection = client.db.collection("player_wallets")
+
+  const existingCards = await playerCardsCollection
+    .find({
+      userId,
+    })
+    .project({
+      cardKey: 1,
+    })
+    .toArray()
+
+  const ownedCardKeys = new Set(existingCards.map((card) => card.cardKey))
+
+  const results = []
+  let totalFragmentsEarned = 0
+  let newCardsCount = 0
+  let duplicatesCount = 0
+
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i]
+    const alreadyOwned = ownedCardKeys.has(card.key)
+
+    if (alreadyOwned) {
+      const fragments = FRAGMENTS_BY_RARITY[card.rarity] || 1
+
+      totalFragmentsEarned += fragments
+      duplicatesCount += 1
+
+      results.push({
+        ...card,
+        tirageIndex: i,
+        resultType: "duplicate",
+        fragmentsEarned: fragments,
+      })
+
+      continue
+    }
+
+    await playerCardsCollection.insertOne({
+      userId,
+      cardKey: card.key,
+      cardName: card.name,
+      rarity: card.rarity,
+      rarityLabel: card.rarityLabel,
+      value: card.value,
+      image: card.image,
+      description: card.description || "",
+      source: "tirage",
+      claimedAt: new Date(),
+      favorite: false,
+      locked: false,
+    })
+
+    ownedCardKeys.add(card.key)
+    newCardsCount += 1
+
+    results.push({
+      ...card,
+      tirageIndex: i,
+      resultType: "new",
+      fragmentsEarned: 0,
+    })
+  }
+
+  if (totalFragmentsEarned > 0) {
+    await walletsCollection.updateOne(
+      {
+        userId,
+      },
+      {
+        $inc: {
+          fragments: totalFragmentsEarned,
+        },
+        $set: {
+          updatedAt: new Date(),
+        },
+        $setOnInsert: {
+          userId,
+          createdAt: new Date(),
+        },
+      },
+      {
+        upsert: true,
+      }
+    )
+  }
+
+  return {
+    results,
+    totalFragmentsEarned,
+    newCardsCount,
+    duplicatesCount,
+  }
+}
+
+function buildCardEmbed(session) {
+  const index = session.currentIndex
+  const card = session.cards[index]
+
+  const statusText =
+    card.resultType === "new"
+      ? "✅ Nouvelle carte ajoutée à l'inventaire"
+      : `♻️ Doublon converti en 💠 ${card.fragmentsEarned} fragment${card.fragmentsEarned > 1 ? "s" : ""}`
+
   const embed = new EmbedBuilder()
     .setTitle(`🎴 ${card.name}`)
     .setDescription(card.description || "Carte Arcane")
@@ -129,13 +242,21 @@ function buildCardEmbed(card, index, total, claimed) {
       },
       {
         name: "Progression",
-        value: `Carte ${index + 1}/${total}`,
+        value: `Carte ${index + 1}/${session.cards.length}`,
         inline: true,
       },
       {
-        name: "Statut",
-        value: claimed ? "✅ Carte déjà claim" : "🟢 Disponible",
-        inline: true,
+        name: "Résultat",
+        value: statusText,
+        inline: false,
+      },
+      {
+        name: "Résumé du tirage",
+        value:
+          `🆕 Nouvelles cartes : **${session.newCardsCount}**\n` +
+          `♻️ Doublons : **${session.duplicatesCount}**\n` +
+          `💠 Fragments gagnés : **${session.totalFragmentsEarned}**`,
+        inline: false,
       }
     )
     .setFooter({
@@ -150,18 +271,12 @@ function buildCardEmbed(card, index, total, claimed) {
   return embed
 }
 
-function buildButtons(sessionId, index, total, claimed) {
+function buildButtons(sessionId, index, total) {
   const previousButton = new ButtonBuilder()
     .setCustomId(`tirage:previous:${sessionId}`)
     .setLabel("⬅️ Précédente")
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(index === 0)
-
-  const claimButton = new ButtonBuilder()
-    .setCustomId(`tirage:claim:${sessionId}`)
-    .setLabel(claimed ? "Claimed" : "Claim")
-    .setStyle(claimed ? ButtonStyle.Secondary : ButtonStyle.Success)
-    .setDisabled(claimed)
 
   const nextButton = new ButtonBuilder()
     .setCustomId(`tirage:next:${sessionId}`)
@@ -169,31 +284,16 @@ function buildButtons(sessionId, index, total, claimed) {
     .setStyle(ButtonStyle.Primary)
     .setDisabled(index === total - 1)
 
-  return new ActionRowBuilder().addComponents(
-    previousButton,
-    claimButton,
-    nextButton
-  )
+  return new ActionRowBuilder().addComponents(previousButton, nextButton)
 }
 
-async function renderSession(interaction, client, session) {
-  const index = session.currentIndex
-  const card = session.cards[index]
-  const claimedIndexes = session.claimedIndexes || []
-  const claimed = claimedIndexes.includes(index)
-
-  const embed = buildCardEmbed(
-    card,
-    index,
-    session.cards.length,
-    claimed
-  )
+async function renderSession(interaction, session) {
+  const embed = buildCardEmbed(session)
 
   const row = buildButtons(
     session._id.toString(),
-    index,
-    session.cards.length,
-    claimed
+    session.currentIndex,
+    session.cards.length
   )
 
   return interaction.update({
@@ -219,11 +319,19 @@ module.exports = {
 
     const cards = generateTenCards()
 
+    const processed = await processTirageCards(
+      client,
+      interaction.user.id,
+      cards
+    )
+
     const session = {
       userId: interaction.user.id,
-      cards,
+      cards: processed.results,
       currentIndex: 0,
-      claimedIndexes: [],
+      newCardsCount: processed.newCardsCount,
+      duplicatesCount: processed.duplicatesCount,
+      totalFragmentsEarned: processed.totalFragmentsEarned,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     }
@@ -237,24 +345,19 @@ module.exports = {
       _id: result.insertedId,
     }
 
-    const firstCard = savedSession.cards[0]
-
-    const embed = buildCardEmbed(
-      firstCard,
-      0,
-      savedSession.cards.length,
-      false
-    )
+    const embed = buildCardEmbed(savedSession)
 
     const row = buildButtons(
       savedSession._id.toString(),
-      0,
-      savedSession.cards.length,
-      false
+      savedSession.currentIndex,
+      savedSession.cards.length
     )
 
     return interaction.reply({
-      content: "🎲 Tirage de 10 cartes lancé.",
+      content:
+        `🎲 Tirage de 10 cartes terminé.\n` +
+        `🆕 **${savedSession.newCardsCount}** nouvelle${savedSession.newCardsCount > 1 ? "s" : ""} carte${savedSession.newCardsCount > 1 ? "s" : ""} ajoutée${savedSession.newCardsCount > 1 ? "s" : ""}.\n` +
+        `♻️ **${savedSession.duplicatesCount}** doublon${savedSession.duplicatesCount > 1 ? "s" : ""} converti${savedSession.duplicatesCount > 1 ? "s" : ""} en 💠 **${savedSession.totalFragmentsEarned}** fragment${savedSession.totalFragmentsEarned > 1 ? "s" : ""}.`,
       embeds: [embed],
       components: [row],
     })
@@ -317,7 +420,7 @@ module.exports = {
 
       session.currentIndex = newIndex
 
-      return renderSession(interaction, client, session)
+      return renderSession(interaction, session)
     }
 
     if (action === "next") {
@@ -336,74 +439,7 @@ module.exports = {
 
       session.currentIndex = newIndex
 
-      return renderSession(interaction, client, session)
-    }
-
-    if (action === "claim") {
-      const index = session.currentIndex
-      const card = session.cards[index]
-      const claimedIndexes = session.claimedIndexes || []
-
-      if (claimedIndexes.includes(index)) {
-        return interaction.reply({
-          content: "❌ Tu as déjà claim cette carte.",
-          ephemeral: true,
-        })
-      }
-
-      await client.db.collection("player_cards").insertOne({
-        userId: interaction.user.id,
-        cardKey: card.key,
-        cardName: card.name,
-        rarity: card.rarity,
-        rarityLabel: card.rarityLabel,
-        value: card.value,
-        image: card.image,
-        description: card.description || "",
-        source: "tirage",
-        tirageSessionId: new ObjectId(sessionId),
-        tirageIndex: index,
-        claimedAt: new Date(),
-        favorite: false,
-        locked: false,
-      })
-
-      await sessions.updateOne(
-        {
-          _id: new ObjectId(sessionId),
-        },
-        {
-          $addToSet: {
-            claimedIndexes: index,
-          },
-        }
-      )
-
-      session.claimedIndexes = [...claimedIndexes, index]
-
-      const embed = buildCardEmbed(
-        card,
-        index,
-        session.cards.length,
-        true
-      )
-
-      const row = buildButtons(
-        session._id.toString(),
-        index,
-        session.cards.length,
-        true
-      )
-
-      await interaction.update({
-        embeds: [embed],
-        components: [row],
-      })
-
-      return interaction.followUp({
-        content: `✅ Tu as claim **${card.name}** !`,
-        ephemeral: true,
-      })
+      return renderSession(interaction, session)
     }
   },
 }
