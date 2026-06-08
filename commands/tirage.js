@@ -6,7 +6,10 @@ const {
   ButtonStyle,
 } = require("discord.js")
 
+const { ObjectId } = require("mongodb")
 const arcaneCards = require("../data/arcaneCards")
+
+const TIRAGE_COOLDOWN_MS = 60 * 60 * 1000
 
 const RARITY_WEIGHTS = {
   common: 55,
@@ -22,6 +25,66 @@ const RARITY_COLORS = {
   epic: 0x9b59b6,
   legendary: 0xf1c40f,
   mythic: 0xe74c3c,
+}
+
+function formatRemainingTime(ms) {
+  const totalMinutes = Math.ceil(ms / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes}min`
+  }
+
+  if (hours > 0) {
+    return `${hours}h`
+  }
+
+  return `${minutes}min`
+}
+
+async function checkTirageCooldown(client, userId) {
+  const cooldown = await client.db.collection("tirage_cooldowns").findOne({
+    userId,
+  })
+
+  if (!cooldown || !cooldown.lastTirageAt) {
+    return {
+      allowed: true,
+      remainingMs: 0,
+    }
+  }
+
+  const lastTirageAt = new Date(cooldown.lastTirageAt).getTime()
+  const now = Date.now()
+  const elapsed = now - lastTirageAt
+  const remainingMs = TIRAGE_COOLDOWN_MS - elapsed
+
+  return {
+    allowed: remainingMs <= 0,
+    remainingMs: Math.max(0, remainingMs),
+  }
+}
+
+async function setTirageCooldown(client, userId) {
+  await client.db.collection("tirage_cooldowns").updateOne(
+    {
+      userId,
+    },
+    {
+      $set: {
+        userId,
+        lastTirageAt: new Date(),
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        createdAt: new Date(),
+      },
+    },
+    {
+      upsert: true,
+    }
+  )
 }
 
 function pickRandomCard() {
@@ -116,7 +179,8 @@ function buildButtons(sessionId, index, total, claimed) {
 async function renderSession(interaction, client, session) {
   const index = session.currentIndex
   const card = session.cards[index]
-  const claimed = session.claimedIndexes.includes(index)
+  const claimedIndexes = session.claimedIndexes || []
+  const claimed = claimedIndexes.includes(index)
 
   const embed = buildCardEmbed(
     card,
@@ -144,6 +208,15 @@ module.exports = {
     .setDescription("Faire un tirage de 10 cartes Arcane"),
 
   async execute(interaction, client) {
+    const cooldown = await checkTirageCooldown(client, interaction.user.id)
+
+    if (!cooldown.allowed) {
+      return interaction.reply({
+        content: `⏳ Tu dois attendre encore **${formatRemainingTime(cooldown.remainingMs)}** avant de refaire un tirage.`,
+        ephemeral: true,
+      })
+    }
+
     const cards = generateTenCards()
 
     const session = {
@@ -156,6 +229,8 @@ module.exports = {
     }
 
     const result = await client.db.collection("tirage_sessions").insertOne(session)
+
+    await setTirageCooldown(client, interaction.user.id)
 
     const savedSession = {
       ...session,
@@ -191,8 +266,6 @@ module.exports = {
     const parts = interaction.customId.split(":")
     const action = parts[1]
     const sessionId = parts[2]
-
-    const { ObjectId } = require("mongodb")
 
     if (!ObjectId.isValid(sessionId)) {
       return interaction.reply({
@@ -232,7 +305,9 @@ module.exports = {
       const newIndex = Math.max(0, session.currentIndex - 1)
 
       await sessions.updateOne(
-        { _id: new ObjectId(sessionId) },
+        {
+          _id: new ObjectId(sessionId),
+        },
         {
           $set: {
             currentIndex: newIndex,
@@ -249,7 +324,9 @@ module.exports = {
       const newIndex = Math.min(session.cards.length - 1, session.currentIndex + 1)
 
       await sessions.updateOne(
-        { _id: new ObjectId(sessionId) },
+        {
+          _id: new ObjectId(sessionId),
+        },
         {
           $set: {
             currentIndex: newIndex,
@@ -265,8 +342,9 @@ module.exports = {
     if (action === "claim") {
       const index = session.currentIndex
       const card = session.cards[index]
+      const claimedIndexes = session.claimedIndexes || []
 
-      if (session.claimedIndexes.includes(index)) {
+      if (claimedIndexes.includes(index)) {
         return interaction.reply({
           content: "❌ Tu as déjà claim cette carte.",
           ephemeral: true,
@@ -291,7 +369,9 @@ module.exports = {
       })
 
       await sessions.updateOne(
-        { _id: new ObjectId(sessionId) },
+        {
+          _id: new ObjectId(sessionId),
+        },
         {
           $addToSet: {
             claimedIndexes: index,
@@ -299,7 +379,7 @@ module.exports = {
         }
       )
 
-      session.claimedIndexes.push(index)
+      session.claimedIndexes = [...claimedIndexes, index]
 
       const embed = buildCardEmbed(
         card,
