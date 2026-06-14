@@ -12,11 +12,11 @@ const arcaneCards = require("../data/arcaneCards")
 const TIRAGE_COOLDOWN_MS = 60 * 60 * 1000
 
 const RARITY_WEIGHTS = {
-  common: 55,
-  rare: 25,
-  epic: 12,
-  legendary: 6,
-  mythic: 2,
+  common: 50,
+  rare: 30,
+  epic: 16,
+  legendary: 3,
+  mythic: 1,
 }
 
 const RARITY_COLORS = {
@@ -25,6 +25,14 @@ const RARITY_COLORS = {
   epic: 0x9b59b6,
   legendary: 0xf1c40f,
   mythic: 0xe74c3c,
+}
+
+const RARITY_EMOJIS = {
+  common: "⚪",
+  rare: "🔵",
+  epic: "🟣",
+  legendary: "🟡",
+  mythic: "🔴",
 }
 
 const FRAGMENTS_BY_RARITY = {
@@ -134,10 +142,10 @@ async function processTirageCards(client, userId, cards) {
 
   const ownedCardKeys = new Set(existingCards.map((card) => card.cardKey))
 
-  const results = []
+  const newCards = []
+  const duplicateCards = []
+
   let totalFragmentsEarned = 0
-  let newCardsCount = 0
-  let duplicatesCount = 0
 
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i]
@@ -147,12 +155,10 @@ async function processTirageCards(client, userId, cards) {
       const fragments = FRAGMENTS_BY_RARITY[card.rarity] || 1
 
       totalFragmentsEarned += fragments
-      duplicatesCount += 1
 
-      results.push({
+      duplicateCards.push({
         ...card,
         tirageIndex: i,
-        resultType: "duplicate",
         fragmentsEarned: fragments,
       })
 
@@ -175,13 +181,10 @@ async function processTirageCards(client, userId, cards) {
     })
 
     ownedCardKeys.add(card.key)
-    newCardsCount += 1
 
-    results.push({
+    newCards.push({
       ...card,
       tirageIndex: i,
-      resultType: "new",
-      fragmentsEarned: 0,
     })
   }
 
@@ -209,24 +212,21 @@ async function processTirageCards(client, userId, cards) {
   }
 
   return {
-    results,
+    newCards,
+    duplicateCards,
     totalFragmentsEarned,
-    newCardsCount,
-    duplicatesCount,
+    newCardsCount: newCards.length,
+    duplicatesCount: duplicateCards.length,
   }
 }
 
-function buildCardEmbed(session) {
+function buildNewCardEmbed(session) {
   const index = session.currentIndex
-  const card = session.cards[index]
-
-  const statusText =
-    card.resultType === "new"
-      ? "✅ Nouvelle carte ajoutée à l'inventaire"
-      : `♻️ Doublon converti en 💠 ${card.fragmentsEarned} fragment${card.fragmentsEarned > 1 ? "s" : ""}`
+  const card = session.displayCards[index]
+  const emoji = RARITY_EMOJIS[card.rarity] || "🎴"
 
   const embed = new EmbedBuilder()
-    .setTitle(`🎴 ${card.name}`)
+    .setTitle(`${emoji} ${card.name}`)
     .setDescription(card.description || "Carte Arcane")
     .setColor(RARITY_COLORS[card.rarity] || 0x5865f2)
     .addFields(
@@ -237,30 +237,17 @@ function buildCardEmbed(session) {
       },
       {
         name: "Valeur",
-        value: `${card.value} pts`,
+        value: `${card.value || 0} pts`,
         inline: true,
       },
       {
         name: "Progression",
-        value: `Carte ${index + 1}/${session.cards.length}`,
+        value: `Carte ${index + 1}/${session.displayCards.length}`,
         inline: true,
-      },
-      {
-        name: "Résultat",
-        value: statusText,
-        inline: false,
-      },
-      {
-        name: "Résumé du tirage",
-        value:
-          `🆕 Nouvelles cartes : **${session.newCardsCount}**\n` +
-          `♻️ Doublons : **${session.duplicatesCount}**\n` +
-          `💠 Fragments gagnés : **${session.totalFragmentsEarned}**`,
-        inline: false,
       }
     )
     .setFooter({
-      text: "Mini-jeu de collection Arcane",
+      text: "Nouvelle carte ajoutée à ton inventaire",
     })
     .setTimestamp()
 
@@ -271,7 +258,76 @@ function buildCardEmbed(session) {
   return embed
 }
 
-function buildButtons(sessionId, index, total) {
+function buildDuplicatesSummaryEmbed(session) {
+  const duplicateCards = session.duplicateCards || []
+
+  const embed = new EmbedBuilder()
+    .setTitle("♻️ Résumé des doublons")
+    .setColor(0x5865f2)
+    .setTimestamp()
+
+  if (!duplicateCards.length) {
+    embed.setDescription(
+      "Aucun doublon dans ce tirage.\n\n" +
+      `🆕 Nouvelles cartes : **${session.newCardsCount}**\n` +
+      `💠 Fragments gagnés : **0**`
+    )
+
+    return embed
+  }
+
+  const grouped = new Map()
+
+  for (const card of duplicateCards) {
+    if (!grouped.has(card.key)) {
+      grouped.set(card.key, {
+        name: card.name,
+        rarity: card.rarity,
+        rarityLabel: card.rarityLabel,
+        count: 0,
+        fragments: 0,
+      })
+    }
+
+    const entry = grouped.get(card.key)
+    entry.count += 1
+    entry.fragments += card.fragmentsEarned || 0
+  }
+
+  const duplicateList = Array.from(grouped.values())
+    .map((entry) => {
+      const emoji = RARITY_EMOJIS[entry.rarity] || "🎴"
+      const countText = entry.count > 1 ? ` x${entry.count}` : ""
+
+      return `${emoji} **${entry.name}**${countText} — 💠 ${entry.fragments}`
+    })
+    .join("\n")
+
+  embed.setDescription(
+    `${duplicateList}\n\n` +
+    `🆕 Nouvelles cartes : **${session.newCardsCount}**\n` +
+    `♻️ Doublons : **${session.duplicatesCount}**\n` +
+    `💠 Fragments gagnés : **${session.totalFragmentsEarned}**`
+  )
+
+  embed.setFooter({
+    text: "Les doublons ont été automatiquement convertis en fragments",
+  })
+
+  return embed
+}
+
+function buildCurrentEmbed(session) {
+  const isSummaryPage = session.currentIndex === session.displayCards.length
+
+  if (isSummaryPage) {
+    return buildDuplicatesSummaryEmbed(session)
+  }
+
+  return buildNewCardEmbed(session)
+}
+
+function buildButtons(sessionId, index, totalPages) {
   const previousButton = new ButtonBuilder()
     .setCustomId(`tirage:previous:${sessionId}`)
     .setLabel("⬅️ Précédente")
@@ -282,18 +338,20 @@ function buildButtons(sessionId, index, total) {
     .setCustomId(`tirage:next:${sessionId}`)
     .setLabel("Suivante ➡️")
     .setStyle(ButtonStyle.Primary)
-    .setDisabled(index === total - 1)
+    .setDisabled(index >= totalPages - 1)
 
   return new ActionRowBuilder().addComponents(previousButton, nextButton)
 }
 
 async function renderSession(interaction, session) {
-  const embed = buildCardEmbed(session)
+  const embed = buildCurrentEmbed(session)
+
+  const totalPages = session.displayCards.length + 1
 
   const row = buildButtons(
     session._id.toString(),
     session.currentIndex,
-    session.cards.length
+    totalPages
   )
 
   return interaction.update({
@@ -325,9 +383,12 @@ module.exports = {
       cards
     )
 
+    const displayCards = processed.newCards
+
     const session = {
       userId: interaction.user.id,
-      cards: processed.results,
+      displayCards,
+      duplicateCards: processed.duplicateCards,
       currentIndex: 0,
       newCardsCount: processed.newCardsCount,
       duplicatesCount: processed.duplicatesCount,
@@ -345,12 +406,29 @@ module.exports = {
       _id: result.insertedId,
     }
 
-    const embed = buildCardEmbed(savedSession)
+    const totalPages = savedSession.displayCards.length + 1
+
+    if (savedSession.displayCards.length === 0) {
+      savedSession.currentIndex = 0
+
+      await client.db.collection("tirage_sessions").updateOne(
+        {
+          _id: result.insertedId,
+        },
+        {
+          $set: {
+            currentIndex: 0,
+          },
+        }
+      )
+    }
+
+    const embed = buildCurrentEmbed(savedSession)
 
     const row = buildButtons(
       savedSession._id.toString(),
       savedSession.currentIndex,
-      savedSession.cards.length
+      totalPages
     )
 
     return interaction.reply({
@@ -404,6 +482,8 @@ module.exports = {
       })
     }
 
+    const totalPages = session.displayCards.length + 1
+
     if (action === "previous") {
       const newIndex = Math.max(0, session.currentIndex - 1)
 
@@ -424,7 +504,7 @@ module.exports = {
     }
 
     if (action === "next") {
-      const newIndex = Math.min(session.cards.length - 1, session.currentIndex + 1)
+      const newIndex = Math.min(totalPages - 1, session.currentIndex + 1)
 
       await sessions.updateOne(
         {

@@ -9,8 +9,17 @@ function getCardFromCatalog(cardKey) {
   return arcaneCards.find((card) => card.key === cardKey)
 }
 
-async function getUsername(client, userId) {
+async function getDisplayName(client, guild, userId) {
+  if (guild) {
+    const member = await guild.members.fetch(userId).catch(() => null)
+
+    if (member) {
+      return member.displayName
+    }
+  }
+
   const user = await client.users.fetch(userId).catch(() => null)
+
   return user ? user.username : `Utilisateur ${userId}`
 }
 
@@ -98,7 +107,7 @@ function getRankingTitle(type) {
   return titles[type] || "Classement"
 }
 
-async function buildRankingEmbed(client, type) {
+async function buildRankingEmbed(client, guild, type) {
   const embed = new EmbedBuilder()
     .setTitle(`🏆 ${getRankingTitle(type)}`)
     .setColor(0xf1c40f)
@@ -116,9 +125,9 @@ async function buildRankingEmbed(client, type) {
 
     for (let i = 0; i < ranking.length; i++) {
       const player = ranking[i]
-      const username = await getUsername(client, player.userId)
+      const displayName = await getDisplayName(client, guild, player.userId)
 
-      text.push(`**${i + 1}.** ${username} — 💠 ${player.fragments}`)
+      text.push(`**${i + 1}.** ${displayName} — 💠 ${player.fragments}`)
     }
 
     embed.setDescription(text.join("\n"))
@@ -136,7 +145,7 @@ async function buildRankingEmbed(client, type) {
 
   for (let i = 0; i < ranking.length; i++) {
     const player = ranking[i]
-    const username = await getUsername(client, player.userId)
+    const displayName = await getDisplayName(client, guild, player.userId)
 
     let score = ""
 
@@ -156,7 +165,7 @@ async function buildRankingEmbed(client, type) {
       score = `🔴 ${player.mythicCards} mythique${player.mythicCards > 1 ? "s" : ""}`
     }
 
-    text.push(`**${i + 1}.** ${username} — ${score}`)
+    text.push(`**${i + 1}.** ${displayName} — ${score}`)
   }
 
   embed.setDescription(text.join("\n"))
@@ -199,7 +208,7 @@ module.exports = {
 
   async execute(interaction, client) {
     const type = interaction.options.getString("type")
-    const embed = await buildRankingEmbed(client, type)
+    const embed = await buildRankingEmbed(client, interaction.guild, type)
 
     return interaction.reply({
       embeds: [embed],
