@@ -11,8 +11,9 @@ const arcaneCards = require("../../data/arcaneCards")
 
 const {
   getCardStats,
+  getCardStatsWithUpgrade,
   getStatsForBattle,
-  simulateBattleWithCustomStats,
+  simulateBattleWithResolvedStats,
   generatePveEnemy,
   getPveWinReward,
   getPveLossPenalty,
@@ -50,7 +51,7 @@ const EFFECT_LABELS = {
 }
 
 function normalizeText(text) {
-  return String(text)
+  return String(text || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -58,6 +59,12 @@ function normalizeText(text) {
 
 function findCard(search) {
   const query = normalizeText(search)
+
+  const exactKey = arcaneCards.find((card) => normalizeText(card.key) === query)
+  if (exactKey) return exactKey
+
+  const exactName = arcaneCards.find((card) => normalizeText(card.name) === query)
+  if (exactName) return exactName
 
   return arcaneCards.find((card) => {
     return (
@@ -251,7 +258,7 @@ async function getBestPlayerCard(client, userId) {
       description: playerCard.description || "",
     }
 
-    const stats = getCardStats(card)
+    const stats = await getCardStatsWithUpgrade(client, userId, card)
 
     if (stats.power > bestPower) {
       bestPower = stats.power
@@ -274,9 +281,11 @@ function buildPveEmbed({
   economyResult,
   rewardBoostUsed,
   protectionResult,
+  playerStats,
+  enemyStats,
 }) {
-  const playerStats = getCardStats(playerCard)
-  const enemyStats = getStatsForBattle(enemy)
+  const resolvedPlayerStats = playerStats || getCardStats(playerCard)
+  const resolvedEnemyStats = enemyStats || getStatsForBattle(enemy)
 
   const emoji = RARITY_EMOJIS[playerCard.rarity] || "🎴"
 
@@ -306,22 +315,22 @@ function buildPveEmbed({
         name: `🎴 ${playerCard.name}`,
         value:
           `Rareté : **${playerCard.rarityLabel || playerCard.rarity}**\n` +
-          `❤️ PV : **${playerStats.hp}**\n` +
-          `⚔️ ATK : **${playerStats.attack}**\n` +
-          `🛡️ DEF : **${playerStats.defense}**\n` +
-          `💨 VIT : **${playerStats.speed}**\n` +
-          `⚡ Puissance : **${playerStats.power}**`,
+          `❤️ PV : **${resolvedPlayerStats.hp}**\n` +
+          `⚔️ ATK : **${resolvedPlayerStats.attack}**\n` +
+          `🛡️ DEF : **${resolvedPlayerStats.defense}**\n` +
+          `💨 VIT : **${resolvedPlayerStats.speed}**\n` +
+          `⚡ Puissance : **${resolvedPlayerStats.power}**`,
         inline: true,
       },
       {
         name: `👾 ${enemy.name}`,
         value:
           `Niveau : **${enemy.rarityLabel || enemy.rarity}**\n` +
-          `❤️ PV : **${enemyStats.hp}**\n` +
-          `⚔️ ATK : **${enemyStats.attack}**\n` +
-          `🛡️ DEF : **${enemyStats.defense}**\n` +
-          `💨 VIT : **${enemyStats.speed}**\n` +
-          `⚡ Puissance : **${enemyStats.power}**`,
+          `❤️ PV : **${resolvedEnemyStats.hp}**\n` +
+          `⚔️ ATK : **${resolvedEnemyStats.attack}**\n` +
+          `🛡️ DEF : **${resolvedEnemyStats.defense}**\n` +
+          `💨 VIT : **${resolvedEnemyStats.speed}**\n` +
+          `⚡ Puissance : **${resolvedEnemyStats.power}**`,
         inline: true,
       },
       {
@@ -361,10 +370,11 @@ function buildPvpChallengeEmbed({
   challenger,
   opponent,
   challengerCard,
+  challengerStats,
   challengerName,
   opponentName,
 }) {
-  const stats = getCardStats(challengerCard)
+  const stats = challengerStats || getCardStats(challengerCard)
   const emoji = RARITY_EMOJIS[challengerCard.rarity] || "🎴"
 
   const embed = new EmbedBuilder()
@@ -399,7 +409,7 @@ function buildPvpChallengeEmbed({
       }
     )
     .setFooter({
-      text: "Le joueur défié combattra avec sa meilleure carte.",
+      text: "Le joueur défié combattra avec sa meilleure carte, améliorations incluses.",
     })
     .setTimestamp()
 
@@ -438,8 +448,17 @@ async function buildPvpResultEmbed({
   const challengerName = await getDisplayName(client, guild, challengerId)
   const opponentName = await getDisplayName(client, guild, opponentId)
 
-  const challengerStats = getCardStats(challengerCard)
-  const opponentStats = getCardStats(opponentCard)
+  const challengerStats = await getCardStatsWithUpgrade(
+    client,
+    challengerId,
+    challengerCard
+  )
+
+  const opponentStats = await getCardStatsWithUpgrade(
+    client,
+    opponentId,
+    opponentCard
+  )
 
   const challengerWon = battle.winnerSide === "A"
 
@@ -582,8 +601,21 @@ module.exports = {
         })
       }
 
+      const playerStats = await getCardStatsWithUpgrade(
+        client,
+        interaction.user.id,
+        playerCard
+      )
+
       const enemy = generatePveEnemy(playerCard)
-      const battle = simulateBattleWithCustomStats(playerCard, enemy)
+      const enemyStats = getStatsForBattle(enemy)
+
+      const battle = simulateBattleWithResolvedStats(
+        playerCard,
+        playerStats,
+        enemy,
+        enemyStats
+      )
 
       const hasWon = battle.winnerSide === "A"
 
@@ -657,6 +689,8 @@ module.exports = {
         economyResult,
         rewardBoostUsed,
         protectionResult,
+        playerStats,
+        enemyStats,
       })
 
       return interaction.reply({
@@ -712,6 +746,12 @@ module.exports = {
         })
       }
 
+      const challengerStats = await getCardStatsWithUpgrade(
+        client,
+        interaction.user.id,
+        challengerCard
+      )
+
       const session = {
         type: "pvp",
         challengerId: interaction.user.id,
@@ -726,13 +766,23 @@ module.exports = {
 
       const result = await client.db.collection("combat_sessions").insertOne(session)
 
-      const challengerName = await getDisplayName(client, interaction.guild, interaction.user.id)
-      const opponentName = await getDisplayName(client, interaction.guild, opponent.id)
+      const challengerName = await getDisplayName(
+        client,
+        interaction.guild,
+        interaction.user.id
+      )
+
+      const opponentName = await getDisplayName(
+        client,
+        interaction.guild,
+        opponent.id
+      )
 
       const embed = buildPvpChallengeEmbed({
         challenger: interaction.user,
         opponent,
         challengerCard,
+        challengerStats,
         challengerName,
         opponentName,
       })
@@ -898,7 +948,24 @@ module.exports = {
         })
       }
 
-      const battle = simulateBattleWithCustomStats(challengerCard, opponentCard)
+      const challengerStats = await getCardStatsWithUpgrade(
+        client,
+        session.challengerId,
+        challengerCard
+      )
+
+      const opponentStats = await getCardStatsWithUpgrade(
+        client,
+        session.opponentId,
+        opponentCard
+      )
+
+      const battle = simulateBattleWithResolvedStats(
+        challengerCard,
+        challengerStats,
+        opponentCard,
+        opponentStats
+      )
 
       const challengerWon = battle.winnerSide === "A"
 

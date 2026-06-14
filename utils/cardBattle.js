@@ -1,35 +1,20 @@
 const BASE_STATS_BY_RARITY = {
-  common: {
-    hp: 100,
-    attack: 18,
-    defense: 8,
-    speed: 10,
-  },
-  rare: {
-    hp: 140,
-    attack: 28,
-    defense: 14,
-    speed: 16,
-  },
-  epic: {
-    hp: 190,
-    attack: 42,
-    defense: 22,
-    speed: 24,
-  },
-  legendary: {
-    hp: 260,
-    attack: 62,
-    defense: 34,
-    speed: 34,
-  },
-  mythic: {
-    hp: 360,
-    attack: 90,
-    defense: 50,
-    speed: 48,
-  },
+  common: { hp: 100, attack: 18, defense: 8, speed: 10 },
+  rare: { hp: 140, attack: 28, defense: 14, speed: 16 },
+  epic: { hp: 190, attack: 42, defense: 22, speed: 24 },
+  legendary: { hp: 260, attack: 62, defense: 34, speed: 34 },
+  mythic: { hp: 360, attack: 90, defense: 50, speed: 48 },
 }
+
+const LEVEL_MULTIPLIERS = {
+  1: 0,
+  2: 0.05,
+  3: 0.10,
+  4: 0.15,
+  5: 0.25,
+}
+
+const MAX_LEVEL = 5
 
 const PVE_WIN_REWARDS_BY_RARITY = {
   common: 3,
@@ -55,210 +40,254 @@ const PVP_TRANSFER_BY_RARITY = {
   mythic: 55,
 }
 
-const PVE_ENEMY_MULTIPLIER_BY_RARITY = {
-  common: 0.82,
-  rare: 0.85,
-  epic: 0.88,
-  legendary: 0.92,
-  mythic: 0.95,
-}
-
-function getBaseStatsByRarity(rarity) {
-  return BASE_STATS_BY_RARITY[rarity] || BASE_STATS_BY_RARITY.common
-}
-
 function calculatePower(stats) {
-  return (
-    stats.hp +
-    stats.attack * 3 +
-    stats.defense * 2 +
-    stats.speed * 2
-  )
+  return stats.hp + stats.attack * 3 + stats.defense * 2 + stats.speed * 2
+}
+
+function normalizeStats(stats) {
+  const normalized = {
+    hp: Math.max(1, Math.round(stats.hp || 1)),
+    attack: Math.max(1, Math.round(stats.attack || 1)),
+    defense: Math.max(0, Math.round(stats.defense || 0)),
+    speed: Math.max(1, Math.round(stats.speed || 1)),
+  }
+
+  return {
+    ...normalized,
+    power: calculatePower(normalized),
+  }
 }
 
 function getCardStats(card) {
-  const baseStats = getBaseStatsByRarity(card.rarity)
+  const baseStats = BASE_STATS_BY_RARITY[card.rarity] || BASE_STATS_BY_RARITY.common
 
-  return {
+  return normalizeStats({
     hp: baseStats.hp,
     attack: baseStats.attack,
     defense: baseStats.defense,
     speed: baseStats.speed,
-    power: calculatePower(baseStats),
-  }
+  })
 }
 
 function getStatsForBattle(card) {
-  if (card.customStats) {
-    const stats = {
-      hp: card.customStats.hp,
-      attack: card.customStats.attack,
-      defense: card.customStats.defense,
-      speed: card.customStats.speed,
-    }
+  if (card.battleStats) {
+    return normalizeStats(card.battleStats)
+  }
 
-    return {
-      ...stats,
-      power: calculatePower(stats),
-    }
+  if (
+    card.hp !== undefined ||
+    card.attack !== undefined ||
+    card.defense !== undefined ||
+    card.speed !== undefined
+  ) {
+    return normalizeStats({
+      hp: card.hp,
+      attack: card.attack,
+      defense: card.defense,
+      speed: card.speed,
+    })
   }
 
   return getCardStats(card)
 }
 
-function getRandomVariation(min = 0.9, max = 1.1) {
-  return Math.random() * (max - min) + min
+async function getCardUpgrade(client, userId, cardKey) {
+  if (!client?.db || !userId || !cardKey) {
+    return {
+      level: 1,
+      hpBonus: 0,
+      attackBonus: 0,
+      defenseBonus: 0,
+      speedBonus: 0,
+    }
+  }
+
+  const upgrade = await client.db.collection("player_card_upgrades").findOne({
+    userId,
+    cardKey,
+  })
+
+  return {
+    level: upgrade?.level || 1,
+    hpBonus: upgrade?.hpBonus || 0,
+    attackBonus: upgrade?.attackBonus || 0,
+    defenseBonus: upgrade?.defenseBonus || 0,
+    speedBonus: upgrade?.speedBonus || 0,
+  }
+}
+
+function applyUpgradeToStats(baseStats, upgrade = {}) {
+  const level = Math.min(Math.max(upgrade.level || 1, 1), MAX_LEVEL)
+  const multiplier = LEVEL_MULTIPLIERS[level] || 0
+
+  const stats = {
+    hp: Math.round(baseStats.hp * (1 + multiplier)) + (upgrade.hpBonus || 0),
+    attack: Math.round(baseStats.attack * (1 + multiplier)) + (upgrade.attackBonus || 0),
+    defense: Math.round(baseStats.defense * (1 + multiplier)) + (upgrade.defenseBonus || 0),
+    speed: Math.round(baseStats.speed * (1 + multiplier)) + (upgrade.speedBonus || 0),
+  }
+
+  return normalizeStats(stats)
+}
+
+async function getCardStatsWithUpgrade(client, userId, card) {
+  const baseStats = getCardStats(card)
+  const upgrade = await getCardUpgrade(client, userId, card.key)
+
+  return applyUpgradeToStats(baseStats, upgrade)
+}
+
+async function getStatsForBattleWithUpgrade(client, userId, card) {
+  if (card.battleStats) {
+    return getStatsForBattle(card)
+  }
+
+  return getCardStatsWithUpgrade(client, userId, card)
 }
 
 function calculateDamage(attackerStats, defenderStats) {
-  const rawDamage = attackerStats.attack - defenderStats.defense / 2
-  const variedDamage = rawDamage * getRandomVariation(0.9, 1.1)
+  const randomMultiplier = 0.85 + Math.random() * 0.3
+  const rawDamage = attackerStats.attack * randomMultiplier - defenderStats.defense * 0.45
+  const minimumDamage = Math.max(1, Math.round(attackerStats.attack * 0.2))
 
-  return Math.max(1, Math.round(variedDamage))
+  return Math.max(minimumDamage, Math.round(rawDamage))
 }
 
-function simulateBattle(cardA, cardB) {
-  return simulateBattleWithCustomStats(cardA, cardB)
+function getBattleName(card) {
+  return card.name || card.cardName || card.characterName || card.key || "Carte inconnue"
 }
 
-function simulateBattleWithCustomStats(cardA, cardB) {
-  const statsA = getStatsForBattle(cardA)
-  const statsB = getStatsForBattle(cardB)
-
-  const fighterA = {
-    side: "A",
-    card: cardA,
-    stats: statsA,
-    currentHp: statsA.hp,
-  }
-
-  const fighterB = {
-    side: "B",
-    card: cardB,
-    stats: statsB,
-    currentHp: statsB.hp,
-  }
+function simulateBattleWithResolvedStats(cardA, statsA, cardB, statsB) {
+  let hpA = statsA.hp
+  let hpB = statsB.hp
 
   const logs = []
-
-  let attacker = statsA.speed >= statsB.speed ? fighterA : fighterB
-  let defender = attacker === fighterA ? fighterB : fighterA
-
   let turn = 1
-  const maxTurns = 20
 
-  while (fighterA.currentHp > 0 && fighterB.currentHp > 0 && turn <= maxTurns) {
-    const damage = calculateDamage(attacker.stats, defender.stats)
+  let attackerSide = statsA.speed >= statsB.speed ? "A" : "B"
 
-    defender.currentHp = Math.max(0, defender.currentHp - damage)
+  while (hpA > 0 && hpB > 0 && turn <= 40) {
+    const attackerCard = attackerSide === "A" ? cardA : cardB
+    const defenderCard = attackerSide === "A" ? cardB : cardA
 
-    logs.push({
-      turn,
-      attackerSide: attacker.side,
-      defenderSide: defender.side,
-      attackerName: attacker.card.name,
-      defenderName: defender.card.name,
-      damage,
-      defenderRemainingHp: defender.currentHp,
-    })
+    const attackerStats = attackerSide === "A" ? statsA : statsB
+    const defenderStats = attackerSide === "A" ? statsB : statsA
 
-    if (defender.currentHp <= 0) {
-      break
+    const damage = calculateDamage(attackerStats, defenderStats)
+
+    if (attackerSide === "A") {
+      hpB = Math.max(0, hpB - damage)
+
+      logs.push({
+        turn,
+        attackerSide: "A",
+        defenderSide: "B",
+        attackerName: getBattleName(attackerCard),
+        defenderName: getBattleName(defenderCard),
+        damage,
+        defenderRemainingHp: hpB,
+      })
+    } else {
+      hpA = Math.max(0, hpA - damage)
+
+      logs.push({
+        turn,
+        attackerSide: "B",
+        defenderSide: "A",
+        attackerName: getBattleName(attackerCard),
+        defenderName: getBattleName(defenderCard),
+        damage,
+        defenderRemainingHp: hpA,
+      })
     }
 
-    const temp = attacker
-    attacker = defender
-    defender = temp
+    if (hpA <= 0 || hpB <= 0) break
 
+    attackerSide = attackerSide === "A" ? "B" : "A"
     turn += 1
   }
 
-  let winner = null
-  let loser = null
+  let winnerSide = null
 
-  if (fighterA.currentHp > fighterB.currentHp) {
-    winner = fighterA
-    loser = fighterB
-  } else if (fighterB.currentHp > fighterA.currentHp) {
-    winner = fighterB
-    loser = fighterA
+  if (hpA > hpB) {
+    winnerSide = "A"
+  } else if (hpB > hpA) {
+    winnerSide = "B"
   } else {
-    if (statsA.power >= statsB.power) {
-      winner = fighterA
-      loser = fighterB
-    } else {
-      winner = fighterB
-      loser = fighterA
-    }
+    winnerSide = statsA.power >= statsB.power ? "A" : "B"
   }
 
+  const loserSide = winnerSide === "A" ? "B" : "A"
+
   return {
-    cardA,
-    cardB,
-    statsA,
-    statsB,
-    winner: winner.card,
-    loser: loser.card,
-    winnerSide: winner.side,
-    loserSide: loser.side,
-    winnerRemainingHp: winner.currentHp,
-    loserRemainingHp: loser.currentHp,
+    winnerSide,
+    loserSide,
+    winner: winnerSide === "A" ? cardA : cardB,
+    loser: winnerSide === "A" ? cardB : cardA,
+    winnerStats: winnerSide === "A" ? statsA : statsB,
+    loserStats: winnerSide === "A" ? statsB : statsA,
+    winnerRemainingHp: winnerSide === "A" ? hpA : hpB,
+    loserRemainingHp: winnerSide === "A" ? hpB : hpA,
     turns: logs.length,
     logs,
   }
 }
 
-function generatePveEnemy(card) {
-  const playerStats = getCardStats(card)
-  const multiplier = PVE_ENEMY_MULTIPLIER_BY_RARITY[card.rarity] || 0.85
+function simulateBattle(cardA, cardB) {
+  return simulateBattleWithResolvedStats(
+    cardA,
+    getCardStats(cardA),
+    cardB,
+    getCardStats(cardB)
+  )
+}
 
-  const enemies = {
-    common: [
-      "Voleur des bas-fonds",
-      "Petit trafiquant de Zaun",
-      "Recrue Enforcer",
-    ],
-    rare: [
-      "Enforcer armé",
-      "Sbire de chem-baron",
-      "Combattant de rue",
-    ],
-    epic: [
-      "Mutant shimmer",
-      "Garde d'élite de Piltover",
-      "Agent de Zaun renforcé",
-    ],
-    legendary: [
-      "Champion des bas-fonds",
-      "Exécuteur de chem-baron",
-      "Prototype Hextech instable",
-    ],
-    mythic: [
-      "Créature Hextech majeure",
-      "Abomination au Shimmer",
-      "Boss de Zaun",
-    ],
-  }
+function simulateBattleWithCustomStats(cardA, cardB) {
+  return simulateBattleWithResolvedStats(
+    cardA,
+    getStatsForBattle(cardA),
+    cardB,
+    getStatsForBattle(cardB)
+  )
+}
 
-  const enemyPool = enemies[card.rarity] || enemies.common
-  const enemyName = enemyPool[Math.floor(Math.random() * enemyPool.length)]
+async function simulateBattleWithUpgrades(client, userAId, cardA, userBId, cardB) {
+  const statsA = await getStatsForBattleWithUpgrade(client, userAId, cardA)
+  const statsB = await getStatsForBattleWithUpgrade(client, userBId, cardB)
+
+  return simulateBattleWithResolvedStats(cardA, statsA, cardB, statsB)
+}
+
+function generatePveEnemy(playerCard) {
+  const baseStats = getCardStats(playerCard)
+
+  const difficulty = 0.85 + Math.random() * 0.25
+
+  const enemyStats = normalizeStats({
+    hp: baseStats.hp * difficulty,
+    attack: baseStats.attack * difficulty,
+    defense: baseStats.defense * difficulty,
+    speed: baseStats.speed * difficulty,
+  })
+
+  const enemyNames = [
+    "Garde corrompu",
+    "Mercenaire de Zaun",
+    "Sentinelle Hextech",
+    "Ombre des bas-fonds",
+    "Combattant shimmer",
+  ]
+
+  const enemyName = enemyNames[Math.floor(Math.random() * enemyNames.length)]
 
   return {
     key: `pve_enemy_${Date.now()}`,
     name: enemyName,
     characterName: enemyName,
-    rarity: card.rarity,
-    rarityLabel: card.rarityLabel || card.rarity,
-    value: 0,
-    description: "Un adversaire généré pour le combat PVE.",
+    rarity: playerCard.rarity || "common",
+    rarityLabel: "Ennemi PVE",
     image: "",
-    isPveEnemy: true,
-    customStats: {
-      hp: Math.round(playerStats.hp * multiplier),
-      attack: Math.round(playerStats.attack * multiplier),
-      defense: Math.round(playerStats.defense * multiplier),
-      speed: Math.round(playerStats.speed * multiplier),
-    },
+    battleStats: enemyStats,
   }
 }
 
@@ -271,8 +300,7 @@ function getPveLossPenalty(card) {
 }
 
 function getPveReward(card, hasWon) {
-  if (!hasWon) return 0
-  return getPveWinReward(card)
+  return hasWon ? getPveWinReward(card) : -getPveLossPenalty(card)
 }
 
 function getPvpTransferAmount(winnerCard) {
@@ -288,58 +316,9 @@ async function getWalletFragments(client, userId) {
 }
 
 async function addFragments(client, userId, amount) {
-  if (amount <= 0) {
-    return {
-      before: await getWalletFragments(client, userId),
-      after: await getWalletFragments(client, userId),
-      added: 0,
-    }
-  }
-
   const before = await getWalletFragments(client, userId)
-
-  await client.db.collection("player_wallets").updateOne(
-    {
-      userId,
-    },
-    {
-      $inc: {
-        fragments: amount,
-      },
-      $set: {
-        updatedAt: new Date(),
-      },
-      $setOnInsert: {
-        userId,
-        createdAt: new Date(),
-      },
-    },
-    {
-      upsert: true,
-    }
-  )
-
-  return {
-    before,
-    after: before + amount,
-    added: amount,
-  }
-}
-
-async function removeFragments(client, userId, amount) {
-  if (amount <= 0) {
-    const current = await getWalletFragments(client, userId)
-
-    return {
-      before: current,
-      after: current,
-      removed: 0,
-    }
-  }
-
-  const before = await getWalletFragments(client, userId)
-  const removed = Math.min(before, amount)
-  const after = Math.max(0, before - removed)
+  const added = Math.max(0, amount)
+  const after = before + added
 
   await client.db.collection("player_wallets").updateOne(
     {
@@ -363,76 +342,129 @@ async function removeFragments(client, userId, amount) {
   return {
     before,
     after,
+    added,
+  }
+}
+
+async function removeFragments(client, userId, amount) {
+  const before = await getWalletFragments(client, userId)
+  const requested = Math.max(0, amount)
+  const removed = Math.min(before, requested)
+  const after = before - removed
+
+  await client.db.collection("player_wallets").updateOne(
+    {
+      userId,
+    },
+    {
+      $set: {
+        userId,
+        fragments: after,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        createdAt: new Date(),
+      },
+    },
+    {
+      upsert: true,
+    }
+  )
+
+  return {
+    before,
+    after,
+    requested,
     removed,
   }
 }
 
 async function transferFragments(client, fromUserId, toUserId, amount) {
-  const loss = await removeFragments(client, fromUserId, amount)
+  const fromBefore = await getWalletFragments(client, fromUserId)
+  const toBefore = await getWalletFragments(client, toUserId)
 
-  if (loss.removed > 0) {
-    await addFragments(client, toUserId, loss.removed)
-  }
+  const requested = Math.max(0, amount)
+  const transferred = Math.min(fromBefore, requested)
+
+  const fromAfter = fromBefore - transferred
+  const toAfter = toBefore + transferred
+
+  await client.db.collection("player_wallets").updateOne(
+    {
+      userId: fromUserId,
+    },
+    {
+      $set: {
+        userId: fromUserId,
+        fragments: fromAfter,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        createdAt: new Date(),
+      },
+    },
+    {
+      upsert: true,
+    }
+  )
+
+  await client.db.collection("player_wallets").updateOne(
+    {
+      userId: toUserId,
+    },
+    {
+      $set: {
+        userId: toUserId,
+        fragments: toAfter,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        createdAt: new Date(),
+      },
+    },
+    {
+      upsert: true,
+    }
+  )
 
   return {
-    requested: amount,
-    transferred: loss.removed,
-    fromBefore: loss.before,
-    fromAfter: loss.after,
+    requested,
+    transferred,
+    fromBefore,
+    fromAfter,
+    toBefore,
+    toAfter,
   }
 }
 
 async function updateCombatStats(client, userId, options = {}) {
-  const inc = {}
+  const mode = options.mode
+  const result = options.result
 
-  if (options.mode === "pve" && options.result === "win") {
-    inc.pveWins = 1
+  const inc = {
+    fragmentsWon: options.fragmentsWon || 0,
+    fragmentsLost: options.fragmentsLost || 0,
   }
 
-  if (options.mode === "pve" && options.result === "loss") {
-    inc.pveLosses = 1
-  }
-
-  if (options.mode === "pvp" && options.result === "win") {
-    inc.pvpWins = 1
-  }
-
-  if (options.mode === "pvp" && options.result === "loss") {
-    inc.pvpLosses = 1
-  }
-
-  if (options.pveWin) inc.pveWins = 1
-  if (options.pveLoss) inc.pveLosses = 1
-  if (options.pvpWin) inc.pvpWins = 1
-  if (options.pvpLoss) inc.pvpLosses = 1
-
-  if (options.fragmentsWon && options.fragmentsWon > 0) {
-    inc.fragmentsWon = options.fragmentsWon
-  }
-
-  if (options.fragmentsLost && options.fragmentsLost > 0) {
-    inc.fragmentsLost = options.fragmentsLost
-  }
-
-  const update = {
-    $set: {
-      userId,
-      updatedAt: new Date(),
-    },
-    $setOnInsert: {
-      createdAt: new Date(),
-    },
-  }
-
-  if (Object.keys(inc).length > 0) {
-    update.$inc = inc
-  }
+  if (mode === "pve" && result === "win") inc.pveWins = 1
+  if (mode === "pve" && result === "loss") inc.pveLosses = 1
+  if (mode === "pvp" && result === "win") inc.pvpWins = 1
+  if (mode === "pvp" && result === "loss") inc.pvpLosses = 1
 
   await client.db.collection("combat_stats").updateOne(
     {
       userId,
     },
-    update,
+    {
+      $inc: inc,
+      $set: {
+        userId,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        createdAt: new Date(),
+      },
+    },
     {
       upsert: true,
     }
@@ -441,15 +473,22 @@ async function updateCombatStats(client, userId, options = {}) {
 
 module.exports = {
   BASE_STATS_BY_RARITY,
-  PVE_WIN_REWARDS_BY_RARITY,
-  PVE_LOSS_PENALTIES_BY_RARITY,
-  PVP_TRANSFER_BY_RARITY,
+  LEVEL_MULTIPLIERS,
+  MAX_LEVEL,
 
   getCardStats,
   getStatsForBattle,
+  getCardUpgrade,
+  applyUpgradeToStats,
+  getCardStatsWithUpgrade,
+  getStatsForBattleWithUpgrade,
+
   calculateDamage,
   simulateBattle,
   simulateBattleWithCustomStats,
+  simulateBattleWithResolvedStats,
+  simulateBattleWithUpgrades,
+
   generatePveEnemy,
 
   getPveWinReward,
