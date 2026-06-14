@@ -14,7 +14,13 @@ const {
   getStatsForBattle,
   simulateBattleWithCustomStats,
   generatePveEnemy,
-  getPveReward,
+  getPveWinReward,
+  getPveLossPenalty,
+  getPvpTransferAmount,
+  addFragments,
+  removeFragments,
+  transferFragments,
+  updateCombatStats,
 } = require("../utils/cardBattle")
 
 const PVE_COOLDOWN_MS = 30 * 60 * 1000
@@ -136,31 +142,6 @@ async function setPveCooldown(client, userId) {
   )
 }
 
-async function addFragments(client, userId, amount) {
-  if (amount <= 0) return
-
-  await client.db.collection("player_wallets").updateOne(
-    {
-      userId,
-    },
-    {
-      $inc: {
-        fragments: amount,
-      },
-      $set: {
-        updatedAt: new Date(),
-      },
-      $setOnInsert: {
-        userId,
-        createdAt: new Date(),
-      },
-    },
-    {
-      upsert: true,
-    }
-  )
-}
-
 function buildShortLogs(logs) {
   return logs
     .slice(0, 8)
@@ -214,16 +195,19 @@ function buildPveEmbed({
   playerCard,
   enemy,
   battle,
-  reward,
   hasWon,
+  reward,
+  penalty,
+  economyResult,
 }) {
   const playerStats = getCardStats(playerCard)
   const enemyStats = getStatsForBattle(enemy)
 
   const emoji = RARITY_EMOJIS[playerCard.rarity] || "🎴"
+
   const resultText = hasWon
     ? `✅ **Victoire !** Tu gagnes 💠 **${reward}** fragment${reward > 1 ? "s" : ""}.`
-    : "❌ **Défaite.** Tu ne gagnes aucun fragment."
+    : `❌ **Défaite.** Tu perds 💠 **${economyResult.removed}** fragment${economyResult.removed > 1 ? "s" : ""} sur ${penalty} possible${penalty > 1 ? "s" : ""}.`
 
   const embed = new EmbedBuilder()
     .setTitle(`⚔️ Combat PVE — ${interaction.user.username}`)
@@ -265,6 +249,13 @@ function buildPveEmbed({
           `Vainqueur : **${battle.winner.name}**\n` +
           `Tours : **${battle.turns}**\n` +
           `PV restants du vainqueur : **${battle.winnerRemainingHp}**`,
+        inline: false,
+      },
+      {
+        name: "💠 Fragments",
+        value: hasWon
+          ? `Avant : **${economyResult.before}**\nGagné : **${economyResult.added}**\nMaintenant : **${economyResult.after}**`
+          : `Avant : **${economyResult.before}**\nPerdu : **${economyResult.removed}**\nMaintenant : **${economyResult.after}**`,
         inline: false,
       }
     )
@@ -355,6 +346,7 @@ async function buildPvpResultEmbed({
   challengerCard,
   opponentCard,
   battle,
+  transferResult,
 }) {
   const challengerName = await getDisplayName(client, guild, challengerId)
   const opponentName = await getDisplayName(client, guild, opponentId)
@@ -362,7 +354,7 @@ async function buildPvpResultEmbed({
   const challengerStats = getCardStats(challengerCard)
   const opponentStats = getCardStats(opponentCard)
 
-  const challengerWon = battle.winner.key === challengerCard.key
+  const challengerWon = battle.winnerSide === "A"
 
   const winnerName = challengerWon ? challengerName : opponentName
   const loserName = challengerWon ? opponentName : challengerName
@@ -371,7 +363,8 @@ async function buildPvpResultEmbed({
     .setTitle("🏆 Résultat du combat PVP")
     .setColor(challengerWon ? 0x2ecc71 : 0xe67e22)
     .setDescription(
-      `**${winnerName}** remporte le combat contre **${loserName}** !`
+      `**${winnerName}** remporte le combat contre **${loserName}** !\n\n` +
+      `💠 **${transferResult.transferred}** fragment${transferResult.transferred > 1 ? "s" : ""} transféré${transferResult.transferred > 1 ? "s" : ""} du perdant vers le gagnant.`
     )
     .addFields(
       {
@@ -409,6 +402,14 @@ async function buildPvpResultEmbed({
           `Vainqueur : **${battle.winner.name}**\n` +
           `Tours : **${battle.turns}**\n` +
           `PV restants du vainqueur : **${battle.winnerRemainingHp}**`,
+        inline: false,
+      },
+      {
+        name: "💠 Fragments transférés",
+        value:
+          `Montant prévu : **${transferResult.requested}**\n` +
+          `Montant transféré : **${transferResult.transferred}**\n` +
+          `Le perdant ne peut pas descendre sous **0** fragment.`,
         inline: false,
       }
     )
@@ -494,11 +495,30 @@ module.exports = {
       const enemy = generatePveEnemy(playerCard)
       const battle = simulateBattleWithCustomStats(playerCard, enemy)
 
-      const hasWon = battle.winner.key === playerCard.key
-      const reward = getPveReward(playerCard, hasWon)
+      const hasWon = battle.winnerSide === "A"
 
-      if (hasWon && reward > 0) {
-        await addFragments(client, interaction.user.id, reward)
+      let reward = 0
+      let penalty = 0
+      let economyResult = null
+
+      if (hasWon) {
+        reward = getPveWinReward(playerCard)
+        economyResult = await addFragments(client, interaction.user.id, reward)
+
+        await updateCombatStats(client, interaction.user.id, {
+          mode: "pve",
+          result: "win",
+          fragmentsWon: economyResult.added,
+        })
+      } else {
+        penalty = getPveLossPenalty(playerCard)
+        economyResult = await removeFragments(client, interaction.user.id, penalty)
+
+        await updateCombatStats(client, interaction.user.id, {
+          mode: "pve",
+          result: "loss",
+          fragmentsLost: economyResult.removed,
+        })
       }
 
       await setPveCooldown(client, interaction.user.id)
@@ -508,8 +528,10 @@ module.exports = {
         playerCard,
         enemy,
         battle,
-        reward,
         hasWon,
+        reward,
+        penalty,
+        economyResult,
       })
 
       return interaction.reply({
@@ -753,6 +775,32 @@ module.exports = {
 
       const battle = simulateBattleWithCustomStats(challengerCard, opponentCard)
 
+      const challengerWon = battle.winnerSide === "A"
+
+      const winnerId = challengerWon ? session.challengerId : session.opponentId
+      const loserId = challengerWon ? session.opponentId : session.challengerId
+      const winnerCard = challengerWon ? challengerCard : opponentCard
+
+      const transferAmount = getPvpTransferAmount(winnerCard)
+      const transferResult = await transferFragments(
+        client,
+        loserId,
+        winnerId,
+        transferAmount
+      )
+
+      await updateCombatStats(client, winnerId, {
+        mode: "pvp",
+        result: "win",
+        fragmentsWon: transferResult.transferred,
+      })
+
+      await updateCombatStats(client, loserId, {
+        mode: "pvp",
+        result: "loss",
+        fragmentsLost: transferResult.transferred,
+      })
+
       await sessions.updateOne(
         {
           _id: new ObjectId(sessionId),
@@ -761,8 +809,11 @@ module.exports = {
           $set: {
             status: "completed",
             opponentCardKey: opponentCard.key,
+            winnerUserId: winnerId,
+            loserUserId: loserId,
             winnerCardKey: battle.winner.key,
             loserCardKey: battle.loser.key,
+            fragmentsTransferred: transferResult.transferred,
             turns: battle.turns,
             updatedAt: new Date(),
           },
@@ -777,6 +828,7 @@ module.exports = {
         challengerCard,
         opponentCard,
         battle,
+        transferResult,
       })
 
       return interaction.update({

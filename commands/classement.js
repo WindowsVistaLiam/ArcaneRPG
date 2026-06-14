@@ -95,6 +95,81 @@ async function buildFragmentsRanking(client) {
   }))
 }
 
+async function buildCombatRanking(client, type) {
+  const combatStats = await client.db
+    .collection("combat_stats")
+    .find({})
+    .toArray()
+
+  const players = combatStats.map((stats) => {
+    const pveWins = stats.pveWins || 0
+    const pveLosses = stats.pveLosses || 0
+    const pvpWins = stats.pvpWins || 0
+    const pvpLosses = stats.pvpLosses || 0
+    const fragmentsWon = stats.fragmentsWon || 0
+    const fragmentsLost = stats.fragmentsLost || 0
+
+    return {
+      userId: stats.userId,
+      pveWins,
+      pveLosses,
+      pvpWins,
+      pvpLosses,
+      totalWins: pveWins + pvpWins,
+      totalLosses: pveLosses + pvpLosses,
+      fragmentsWon,
+      fragmentsLost,
+    }
+  })
+
+  if (type === "pve_victoires") {
+    players.sort((a, b) => b.pveWins - a.pveWins)
+  }
+
+  if (type === "pve_defaites") {
+    players.sort((a, b) => b.pveLosses - a.pveLosses)
+  }
+
+  if (type === "pvp_victoires") {
+    players.sort((a, b) => b.pvpWins - a.pvpWins)
+  }
+
+  if (type === "pvp_defaites") {
+    players.sort((a, b) => b.pvpLosses - a.pvpLosses)
+  }
+
+  if (type === "victoires") {
+    players.sort((a, b) => b.totalWins - a.totalWins)
+  }
+
+  if (type === "defaites") {
+    players.sort((a, b) => b.totalLosses - a.totalLosses)
+  }
+
+  if (type === "fragments_combat_gagnes") {
+    players.sort((a, b) => b.fragmentsWon - a.fragmentsWon)
+  }
+
+  if (type === "fragments_combat_perdus") {
+    players.sort((a, b) => b.fragmentsLost - a.fragmentsLost)
+  }
+
+  return players.slice(0, 10)
+}
+
+function isCombatRanking(type) {
+  return [
+    "pve_victoires",
+    "pve_defaites",
+    "pvp_victoires",
+    "pvp_defaites",
+    "victoires",
+    "defaites",
+    "fragments_combat_gagnes",
+    "fragments_combat_perdus",
+  ].includes(type)
+}
+
 function getRankingTitle(type) {
   const titles = {
     valeur: "Classement par valeur",
@@ -102,9 +177,54 @@ function getRankingTitle(type) {
     uniques: "Classement par cartes uniques",
     mythiques: "Classement par cartes mythiques",
     fragments: "Classement par fragments",
+
+    pve_victoires: "Classement des victoires PVE",
+    pve_defaites: "Classement des défaites PVE",
+    pvp_victoires: "Classement des victoires PVP",
+    pvp_defaites: "Classement des défaites PVP",
+    victoires: "Classement des victoires totales",
+    defaites: "Classement des défaites totales",
+    fragments_combat_gagnes: "Classement des fragments gagnés en combat",
+    fragments_combat_perdus: "Classement des fragments perdus en combat",
   }
 
   return titles[type] || "Classement"
+}
+
+function getCombatScore(player, type) {
+  if (type === "pve_victoires") {
+    return `✅ ${player.pveWins} victoire${player.pveWins > 1 ? "s" : ""} PVE`
+  }
+
+  if (type === "pve_defaites") {
+    return `❌ ${player.pveLosses} défaite${player.pveLosses > 1 ? "s" : ""} PVE`
+  }
+
+  if (type === "pvp_victoires") {
+    return `✅ ${player.pvpWins} victoire${player.pvpWins > 1 ? "s" : ""} PVP`
+  }
+
+  if (type === "pvp_defaites") {
+    return `❌ ${player.pvpLosses} défaite${player.pvpLosses > 1 ? "s" : ""} PVP`
+  }
+
+  if (type === "victoires") {
+    return `✅ ${player.totalWins} victoire${player.totalWins > 1 ? "s" : ""} au total`
+  }
+
+  if (type === "defaites") {
+    return `❌ ${player.totalLosses} défaite${player.totalLosses > 1 ? "s" : ""} au total`
+  }
+
+  if (type === "fragments_combat_gagnes") {
+    return `💠 ${player.fragmentsWon} fragment${player.fragmentsWon > 1 ? "s" : ""} gagné${player.fragmentsWon > 1 ? "s" : ""}`
+  }
+
+  if (type === "fragments_combat_perdus") {
+    return `💠 ${player.fragmentsLost} fragment${player.fragmentsLost > 1 ? "s" : ""} perdu${player.fragmentsLost > 1 ? "s" : ""}`
+  }
+
+  return "Aucun score"
 }
 
 async function buildRankingEmbed(client, guild, type) {
@@ -128,6 +248,28 @@ async function buildRankingEmbed(client, guild, type) {
       const displayName = await getDisplayName(client, guild, player.userId)
 
       text.push(`**${i + 1}.** ${displayName} — 💠 ${player.fragments}`)
+    }
+
+    embed.setDescription(text.join("\n"))
+    return embed
+  }
+
+  if (isCombatRanking(type)) {
+    const ranking = await buildCombatRanking(client, type)
+
+    if (!ranking.length) {
+      embed.setDescription("Aucun joueur classé pour le moment.")
+      return embed
+    }
+
+    const text = []
+
+    for (let i = 0; i < ranking.length; i++) {
+      const player = ranking[i]
+      const displayName = await getDisplayName(client, guild, player.userId)
+      const score = getCombatScore(player, type)
+
+      text.push(`**${i + 1}.** ${displayName} — ${score}`)
     }
 
     embed.setDescription(text.join("\n"))
@@ -202,6 +344,38 @@ module.exports = {
           {
             name: "Fragments",
             value: "fragments",
+          },
+          {
+            name: "Victoires PVE",
+            value: "pve_victoires",
+          },
+          {
+            name: "Défaites PVE",
+            value: "pve_defaites",
+          },
+          {
+            name: "Victoires PVP",
+            value: "pvp_victoires",
+          },
+          {
+            name: "Défaites PVP",
+            value: "pvp_defaites",
+          },
+          {
+            name: "Victoires totales",
+            value: "victoires",
+          },
+          {
+            name: "Défaites totales",
+            value: "defaites",
+          },
+          {
+            name: "Fragments gagnés en combat",
+            value: "fragments_combat_gagnes",
+          },
+          {
+            name: "Fragments perdus en combat",
+            value: "fragments_combat_perdus",
           }
         )
     ),

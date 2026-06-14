@@ -31,16 +31,49 @@ const BASE_STATS_BY_RARITY = {
   },
 }
 
-const RARITY_MULTIPLIER = {
+const PVE_WIN_REWARDS_BY_RARITY = {
+  common: 3,
+  rare: 7,
+  epic: 14,
+  legendary: 28,
+  mythic: 55,
+}
+
+const PVE_LOSS_PENALTIES_BY_RARITY = {
   common: 1,
-  rare: 1.15,
-  epic: 1.35,
-  legendary: 1.65,
-  mythic: 2,
+  rare: 2,
+  epic: 4,
+  legendary: 8,
+  mythic: 15,
+}
+
+const PVP_TRANSFER_BY_RARITY = {
+  common: 3,
+  rare: 7,
+  epic: 14,
+  legendary: 28,
+  mythic: 55,
+}
+
+const PVE_ENEMY_MULTIPLIER_BY_RARITY = {
+  common: 0.82,
+  rare: 0.85,
+  epic: 0.88,
+  legendary: 0.92,
+  mythic: 0.95,
 }
 
 function getBaseStatsByRarity(rarity) {
   return BASE_STATS_BY_RARITY[rarity] || BASE_STATS_BY_RARITY.common
+}
+
+function calculatePower(stats) {
+  return (
+    stats.hp +
+    stats.attack * 3 +
+    stats.defense * 2 +
+    stats.speed * 2
+  )
 }
 
 function getCardStats(card) {
@@ -51,16 +84,26 @@ function getCardStats(card) {
     attack: baseStats.attack,
     defense: baseStats.defense,
     speed: baseStats.speed,
-    power:
-      baseStats.hp +
-      baseStats.attack * 3 +
-      baseStats.defense * 2 +
-      baseStats.speed * 2,
+    power: calculatePower(baseStats),
   }
 }
 
-function getRarityMultiplier(rarity) {
-  return RARITY_MULTIPLIER[rarity] || 1
+function getStatsForBattle(card) {
+  if (card.customStats) {
+    const stats = {
+      hp: card.customStats.hp,
+      attack: card.customStats.attack,
+      defense: card.customStats.defense,
+      speed: card.customStats.speed,
+    }
+
+    return {
+      ...stats,
+      power: calculatePower(stats),
+    }
+  }
+
+  return getCardStats(card)
 }
 
 function getRandomVariation(min = 0.9, max = 1.1) {
@@ -75,16 +118,22 @@ function calculateDamage(attackerStats, defenderStats) {
 }
 
 function simulateBattle(cardA, cardB) {
-  const statsA = getCardStats(cardA)
-  const statsB = getCardStats(cardB)
+  return simulateBattleWithCustomStats(cardA, cardB)
+}
 
-  let fighterA = {
+function simulateBattleWithCustomStats(cardA, cardB) {
+  const statsA = getStatsForBattle(cardA)
+  const statsB = getStatsForBattle(cardB)
+
+  const fighterA = {
+    side: "A",
     card: cardA,
     stats: statsA,
     currentHp: statsA.hp,
   }
 
-  let fighterB = {
+  const fighterB = {
+    side: "B",
     card: cardB,
     stats: statsB,
     currentHp: statsB.hp,
@@ -105,6 +154,8 @@ function simulateBattle(cardA, cardB) {
 
     logs.push({
       turn,
+      attackerSide: attacker.side,
+      defenderSide: defender.side,
       attackerName: attacker.card.name,
       defenderName: defender.card.name,
       damage,
@@ -132,10 +183,7 @@ function simulateBattle(cardA, cardB) {
     winner = fighterB
     loser = fighterA
   } else {
-    const powerA = statsA.power
-    const powerB = statsB.power
-
-    if (powerA >= powerB) {
+    if (statsA.power >= statsB.power) {
       winner = fighterA
       loser = fighterB
     } else {
@@ -151,6 +199,8 @@ function simulateBattle(cardA, cardB) {
     statsB,
     winner: winner.card,
     loser: loser.card,
+    winnerSide: winner.side,
+    loserSide: loser.side,
     winnerRemainingHp: winner.currentHp,
     loserRemainingHp: loser.currentHp,
     turns: logs.length,
@@ -159,8 +209,8 @@ function simulateBattle(cardA, cardB) {
 }
 
 function generatePveEnemy(card) {
-  const stats = getCardStats(card)
-  const multiplier = getRarityMultiplier(card.rarity)
+  const playerStats = getCardStats(card)
+  const multiplier = PVE_ENEMY_MULTIPLIER_BY_RARITY[card.rarity] || 0.85
 
   const enemies = {
     common: [
@@ -204,139 +254,212 @@ function generatePveEnemy(card) {
     image: "",
     isPveEnemy: true,
     customStats: {
-      hp: Math.round(stats.hp * 0.85 * multiplier),
-      attack: Math.round(stats.attack * 0.85),
-      defense: Math.round(stats.defense * 0.85),
-      speed: Math.round(stats.speed * 0.85),
+      hp: Math.round(playerStats.hp * multiplier),
+      attack: Math.round(playerStats.attack * multiplier),
+      defense: Math.round(playerStats.defense * multiplier),
+      speed: Math.round(playerStats.speed * multiplier),
     },
   }
 }
 
-function getStatsForBattle(card) {
-  if (card.customStats) {
-    const stats = card.customStats
-
-    return {
-      hp: stats.hp,
-      attack: stats.attack,
-      defense: stats.defense,
-      speed: stats.speed,
-      power:
-        stats.hp +
-        stats.attack * 3 +
-        stats.defense * 2 +
-        stats.speed * 2,
-    }
-  }
-
-  return getCardStats(card)
+function getPveWinReward(card) {
+  return PVE_WIN_REWARDS_BY_RARITY[card.rarity] || PVE_WIN_REWARDS_BY_RARITY.common
 }
 
-function simulateBattleWithCustomStats(cardA, cardB) {
-  const statsA = getStatsForBattle(cardA)
-  const statsB = getStatsForBattle(cardB)
-
-  let fighterA = {
-    card: cardA,
-    stats: statsA,
-    currentHp: statsA.hp,
-  }
-
-  let fighterB = {
-    card: cardB,
-    stats: statsB,
-    currentHp: statsB.hp,
-  }
-
-  const logs = []
-
-  let attacker = statsA.speed >= statsB.speed ? fighterA : fighterB
-  let defender = attacker === fighterA ? fighterB : fighterA
-
-  let turn = 1
-  const maxTurns = 20
-
-  while (fighterA.currentHp > 0 && fighterB.currentHp > 0 && turn <= maxTurns) {
-    const damage = calculateDamage(attacker.stats, defender.stats)
-
-    defender.currentHp = Math.max(0, defender.currentHp - damage)
-
-    logs.push({
-      turn,
-      attackerName: attacker.card.name,
-      defenderName: defender.card.name,
-      damage,
-      defenderRemainingHp: defender.currentHp,
-    })
-
-    if (defender.currentHp <= 0) {
-      break
-    }
-
-    const temp = attacker
-    attacker = defender
-    defender = temp
-
-    turn += 1
-  }
-
-  let winner = null
-  let loser = null
-
-  if (fighterA.currentHp > fighterB.currentHp) {
-    winner = fighterA
-    loser = fighterB
-  } else if (fighterB.currentHp > fighterA.currentHp) {
-    winner = fighterB
-    loser = fighterA
-  } else {
-    const powerA = statsA.power
-    const powerB = statsB.power
-
-    if (powerA >= powerB) {
-      winner = fighterA
-      loser = fighterB
-    } else {
-      winner = fighterB
-      loser = fighterA
-    }
-  }
-
-  return {
-    cardA,
-    cardB,
-    statsA,
-    statsB,
-    winner: winner.card,
-    loser: loser.card,
-    winnerRemainingHp: winner.currentHp,
-    loserRemainingHp: loser.currentHp,
-    turns: logs.length,
-    logs,
-  }
-}
-
-const PVE_REWARDS_BY_RARITY = {
-  common: 3,
-  rare: 7,
-  epic: 14,
-  legendary: 28,
-  mythic: 55,
+function getPveLossPenalty(card) {
+  return PVE_LOSS_PENALTIES_BY_RARITY[card.rarity] || PVE_LOSS_PENALTIES_BY_RARITY.common
 }
 
 function getPveReward(card, hasWon) {
   if (!hasWon) return 0
+  return getPveWinReward(card)
+}
 
-  return PVE_REWARDS_BY_RARITY[card.rarity] || PVE_REWARDS_BY_RARITY.common
+function getPvpTransferAmount(winnerCard) {
+  return PVP_TRANSFER_BY_RARITY[winnerCard.rarity] || PVP_TRANSFER_BY_RARITY.common
+}
+
+async function getWalletFragments(client, userId) {
+  const wallet = await client.db.collection("player_wallets").findOne({
+    userId,
+  })
+
+  return wallet?.fragments || 0
+}
+
+async function addFragments(client, userId, amount) {
+  if (amount <= 0) {
+    return {
+      before: await getWalletFragments(client, userId),
+      after: await getWalletFragments(client, userId),
+      added: 0,
+    }
+  }
+
+  const before = await getWalletFragments(client, userId)
+
+  await client.db.collection("player_wallets").updateOne(
+    {
+      userId,
+    },
+    {
+      $inc: {
+        fragments: amount,
+      },
+      $set: {
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        userId,
+        createdAt: new Date(),
+      },
+    },
+    {
+      upsert: true,
+    }
+  )
+
+  return {
+    before,
+    after: before + amount,
+    added: amount,
+  }
+}
+
+async function removeFragments(client, userId, amount) {
+  if (amount <= 0) {
+    const current = await getWalletFragments(client, userId)
+
+    return {
+      before: current,
+      after: current,
+      removed: 0,
+    }
+  }
+
+  const before = await getWalletFragments(client, userId)
+  const removed = Math.min(before, amount)
+  const after = Math.max(0, before - removed)
+
+  await client.db.collection("player_wallets").updateOne(
+    {
+      userId,
+    },
+    {
+      $set: {
+        userId,
+        fragments: after,
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        createdAt: new Date(),
+      },
+    },
+    {
+      upsert: true,
+    }
+  )
+
+  return {
+    before,
+    after,
+    removed,
+  }
+}
+
+async function transferFragments(client, fromUserId, toUserId, amount) {
+  const loss = await removeFragments(client, fromUserId, amount)
+
+  if (loss.removed > 0) {
+    await addFragments(client, toUserId, loss.removed)
+  }
+
+  return {
+    requested: amount,
+    transferred: loss.removed,
+    fromBefore: loss.before,
+    fromAfter: loss.after,
+  }
+}
+
+async function updateCombatStats(client, userId, options = {}) {
+  const inc = {}
+
+  if (options.mode === "pve" && options.result === "win") {
+    inc.pveWins = 1
+  }
+
+  if (options.mode === "pve" && options.result === "loss") {
+    inc.pveLosses = 1
+  }
+
+  if (options.mode === "pvp" && options.result === "win") {
+    inc.pvpWins = 1
+  }
+
+  if (options.mode === "pvp" && options.result === "loss") {
+    inc.pvpLosses = 1
+  }
+
+  if (options.pveWin) inc.pveWins = 1
+  if (options.pveLoss) inc.pveLosses = 1
+  if (options.pvpWin) inc.pvpWins = 1
+  if (options.pvpLoss) inc.pvpLosses = 1
+
+  if (options.fragmentsWon && options.fragmentsWon > 0) {
+    inc.fragmentsWon = options.fragmentsWon
+  }
+
+  if (options.fragmentsLost && options.fragmentsLost > 0) {
+    inc.fragmentsLost = options.fragmentsLost
+  }
+
+  const update = {
+    $set: {
+      userId,
+      updatedAt: new Date(),
+    },
+    $setOnInsert: {
+      createdAt: new Date(),
+    },
+  }
+
+  if (Object.keys(inc).length > 0) {
+    update.$inc = inc
+  }
+
+  await client.db.collection("combat_stats").updateOne(
+    {
+      userId,
+    },
+    update,
+    {
+      upsert: true,
+    }
+  )
 }
 
 module.exports = {
   BASE_STATS_BY_RARITY,
+  PVE_WIN_REWARDS_BY_RARITY,
+  PVE_LOSS_PENALTIES_BY_RARITY,
+  PVP_TRANSFER_BY_RARITY,
+
   getCardStats,
   getStatsForBattle,
   calculateDamage,
   simulateBattle,
   simulateBattleWithCustomStats,
   generatePveEnemy,
+
+  getPveWinReward,
+  getPveLossPenalty,
   getPveReward,
+  getPvpTransferAmount,
+
+  getWalletFragments,
+  addFragments,
+  removeFragments,
+  transferFragments,
+  updateCombatStats,
 }
