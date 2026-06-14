@@ -11,12 +11,28 @@ const arcaneCards = require("../../data/arcaneCards")
 
 const TIRAGE_COOLDOWN_MS = 60 * 60 * 1000
 
-const RARITY_WEIGHTS = {
-  common: 500,
+const DEFAULT_RARITY_WEIGHTS = {
+  common: 800,
+  rare: 150,
+  epic: 30,
+  legendary: 19,
+  mythic: 1,
+}
+
+const BOOST_RARE_WEIGHTS = {
+  common: 550,
   rare: 300,
-  epic: 160,
-  legendary: 38,
+  epic: 100,
+  legendary: 48,
   mythic: 2,
+}
+
+const BOOST_EPIC_WEIGHTS = {
+  common: 400,
+  rare: 300,
+  epic: 200,
+  legendary: 95,
+  mythic: 5,
 }
 
 const RARITY_COLORS = {
@@ -103,11 +119,81 @@ async function setTirageCooldown(client, userId) {
   )
 }
 
-function pickRandomCard() {
+async function getActiveEffect(client, userId, effectKey) {
+  return client.db.collection("player_effects").findOne({
+    userId,
+    effectKey,
+    uses: {
+      $gt: 0,
+    },
+  })
+}
+
+async function consumeEffect(client, userId, effectKey) {
+  const effect = await getActiveEffect(client, userId, effectKey)
+
+  if (!effect) {
+    return false
+  }
+
+  if ((effect.uses || 0) <= 1) {
+    await client.db.collection("player_effects").deleteOne({
+      _id: effect._id,
+    })
+
+    return true
+  }
+
+  await client.db.collection("player_effects").updateOne(
+    {
+      _id: effect._id,
+    },
+    {
+      $inc: {
+        uses: -1,
+      },
+      $set: {
+        updatedAt: new Date(),
+      },
+    }
+  )
+
+  return true
+}
+
+async function getDrawBoost(client, userId) {
+  const epicBoost = await getActiveEffect(client, userId, "draw_boost_epic")
+
+  if (epicBoost) {
+    return {
+      effectKey: "draw_boost_epic",
+      label: "✨ Boost Épique",
+      weights: BOOST_EPIC_WEIGHTS,
+    }
+  }
+
+  const rareBoost = await getActiveEffect(client, userId, "draw_boost_rare")
+
+  if (rareBoost) {
+    return {
+      effectKey: "draw_boost_rare",
+      label: "🍀 Boost Rare",
+      weights: BOOST_RARE_WEIGHTS,
+    }
+  }
+
+  return {
+    effectKey: null,
+    label: null,
+    weights: DEFAULT_RARITY_WEIGHTS,
+  }
+}
+
+function pickRandomCard(weights) {
   const weightedCards = []
 
   for (const card of arcaneCards) {
-    const weight = RARITY_WEIGHTS[card.rarity] || 1
+    const weight = weights[card.rarity] || 1
 
     for (let i = 0; i < weight; i++) {
       weightedCards.push(card)
@@ -117,11 +203,11 @@ function pickRandomCard() {
   return weightedCards[Math.floor(Math.random() * weightedCards.length)]
 }
 
-function generateTenCards() {
+function generateTenCards(weights) {
   const cards = []
 
   for (let i = 0; i < 10; i++) {
-    cards.push(pickRandomCard())
+    cards.push(pickRandomCard(weights))
   }
 
   return cards
@@ -262,7 +348,7 @@ function buildDuplicatesSummaryEmbed(session) {
   const duplicateCards = session.duplicateCards || []
 
   const embed = new EmbedBuilder()
-    .setTitle("♻️ Résumé des doublons")
+    .setTitle("♻️ Résumé du tirage")
     .setColor(0x5865f2)
     .setTimestamp()
 
@@ -270,7 +356,8 @@ function buildDuplicatesSummaryEmbed(session) {
     embed.setDescription(
       "Aucun doublon dans ce tirage.\n\n" +
       `🆕 Nouvelles cartes : **${session.newCardsCount}**\n` +
-      `💠 Fragments gagnés : **0**`
+      `💠 Fragments gagnés : **0**` +
+      `${session.drawBoostLabel ? `\n🍀 Boost utilisé : **${session.drawBoostLabel}**` : ""}`
     )
 
     return embed
@@ -307,7 +394,8 @@ function buildDuplicatesSummaryEmbed(session) {
     `${duplicateList}\n\n` +
     `🆕 Nouvelles cartes : **${session.newCardsCount}**\n` +
     `♻️ Doublons : **${session.duplicatesCount}**\n` +
-    `💠 Fragments gagnés : **${session.totalFragmentsEarned}**`
+    `💠 Fragments gagnés : **${session.totalFragmentsEarned}**` +
+    `${session.drawBoostLabel ? `\n🍀 Boost utilisé : **${session.drawBoostLabel}**` : ""}`
   )
 
   embed.setFooter({
@@ -345,7 +433,6 @@ function buildButtons(sessionId, index, totalPages) {
 
 async function renderSession(interaction, session) {
   const embed = buildCurrentEmbed(session)
-
   const totalPages = session.displayCards.length + 1
 
   const row = buildButtons(
@@ -375,7 +462,13 @@ module.exports = {
       })
     }
 
-    const cards = generateTenCards()
+    const drawBoost = await getDrawBoost(client, interaction.user.id)
+
+    const cards = generateTenCards(drawBoost.weights)
+
+    if (drawBoost.effectKey) {
+      await consumeEffect(client, interaction.user.id, drawBoost.effectKey)
+    }
 
     const processed = await processTirageCards(
       client,
@@ -393,6 +486,8 @@ module.exports = {
       newCardsCount: processed.newCardsCount,
       duplicatesCount: processed.duplicatesCount,
       totalFragmentsEarned: processed.totalFragmentsEarned,
+      drawBoostKey: drawBoost.effectKey,
+      drawBoostLabel: drawBoost.label,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     }
@@ -408,21 +503,6 @@ module.exports = {
 
     const totalPages = savedSession.displayCards.length + 1
 
-    if (savedSession.displayCards.length === 0) {
-      savedSession.currentIndex = 0
-
-      await client.db.collection("tirage_sessions").updateOne(
-        {
-          _id: result.insertedId,
-        },
-        {
-          $set: {
-            currentIndex: 0,
-          },
-        }
-      )
-    }
-
     const embed = buildCurrentEmbed(savedSession)
 
     const row = buildButtons(
@@ -434,6 +514,7 @@ module.exports = {
     return interaction.reply({
       content:
         `🎲 Tirage de 10 cartes terminé.\n` +
+        `${drawBoost.label ? `🍀 Boost consommé : **${drawBoost.label}**\n` : ""}` +
         `🆕 **${savedSession.newCardsCount}** nouvelle${savedSession.newCardsCount > 1 ? "s" : ""} carte${savedSession.newCardsCount > 1 ? "s" : ""} ajoutée${savedSession.newCardsCount > 1 ? "s" : ""}.\n` +
         `♻️ **${savedSession.duplicatesCount}** doublon${savedSession.duplicatesCount > 1 ? "s" : ""} converti${savedSession.duplicatesCount > 1 ? "s" : ""} en 💠 **${savedSession.totalFragmentsEarned}** fragment${savedSession.totalFragmentsEarned > 1 ? "s" : ""}.`,
       embeds: [embed],
