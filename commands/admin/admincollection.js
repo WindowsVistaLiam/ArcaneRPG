@@ -7,7 +7,7 @@ const {
   ButtonStyle,
 } = require("discord.js")
 
-const arcaneCards = require("../data/arcaneCards")
+const arcaneCards = require("../../data/arcaneCards")
 
 const PAGE_SIZE = 10
 

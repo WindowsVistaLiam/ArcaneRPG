@@ -5,7 +5,7 @@ const {
   EmbedBuilder,
 } = require("discord.js")
 
-const arcaneCards = require("../data/arcaneCards")
+const arcaneCards = require("../../data/arcaneCards")
 
 const FRAGMENTS_BY_RARITY = {
   common: 1,

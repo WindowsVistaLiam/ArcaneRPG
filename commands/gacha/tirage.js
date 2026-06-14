@@ -7,7 +7,7 @@ const {
 } = require("discord.js")
 
 const { ObjectId } = require("mongodb")
-const arcaneCards = require("../data/arcaneCards")
+const arcaneCards = require("../../data/arcaneCards")
 
 const TIRAGE_COOLDOWN_MS = 60 * 60 * 1000
 

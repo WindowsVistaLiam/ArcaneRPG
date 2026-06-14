@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { COLORS } = require("../style"); // Couleurs Arcane
+const { COLORS } = require("../../style"); // Couleurs Arcane
 
 module.exports = {
     data: new SlashCommandBuilder()

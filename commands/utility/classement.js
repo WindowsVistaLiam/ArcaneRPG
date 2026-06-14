@@ -3,7 +3,7 @@ const {
   EmbedBuilder,
 } = require("discord.js")
 
-const arcaneCards = require("../data/arcaneCards")
+const arcaneCards = require("../../data/arcaneCards")
 
 function getCardFromCatalog(cardKey) {
   return arcaneCards.find((card) => card.key === cardKey)

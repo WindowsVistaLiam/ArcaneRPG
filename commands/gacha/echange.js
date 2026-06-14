@@ -7,7 +7,7 @@ const {
 } = require("discord.js")
 
 const { ObjectId } = require("mongodb")
-const arcaneCards = require("../data/arcaneCards")
+const arcaneCards = require("../../data/arcaneCards")
 
 const EXCHANGE_EXPIRES_MS = 10 * 60 * 1000
 

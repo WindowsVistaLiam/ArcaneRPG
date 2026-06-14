@@ -3,7 +3,7 @@ const {
   EmbedBuilder,
 } = require("discord.js")
 
-const arcaneCards = require("../data/arcaneCards")
+const arcaneCards = require("../../data/arcaneCards")
 
 const RARITY_COLORS = {
   common: 0x95a5a6,

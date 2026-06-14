@@ -6,7 +6,7 @@ const {
   ActionRowBuilder,
 } = require("discord.js")
 
-const arcaneCards = require("../data/arcaneCards")
+const arcaneCards = require("../../data/arcaneCards")
 
 const RARITY_ORDER = {
   mythic: 1,

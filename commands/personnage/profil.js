@@ -5,7 +5,7 @@ const {
     ButtonStyle
 } = require("discord.js")
 
-const { characterEmbed } = require("../style")
+const { characterEmbed } = require("../../style")
 
 async function getPopularityScore(client, characterId) {
     return await client.db.collection("popularity_votes").countDocuments({

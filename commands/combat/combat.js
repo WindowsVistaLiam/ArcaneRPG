@@ -7,7 +7,7 @@ const {
 } = require("discord.js")
 
 const { ObjectId } = require("mongodb")
-const arcaneCards = require("../data/arcaneCards")
+const arcaneCards = require("../../data/arcaneCards")
 
 const {
   getCardStats,
@@ -21,7 +21,7 @@ const {
   removeFragments,
   transferFragments,
   updateCombatStats,
-} = require("../utils/cardBattle")
+} = require("../../utils/cardBattle")
 
 const PVE_COOLDOWN_MS = 30 * 60 * 1000
 
