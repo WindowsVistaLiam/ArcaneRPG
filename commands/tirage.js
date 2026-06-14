@@ -12,11 +12,11 @@ const arcaneCards = require("../data/arcaneCards")
 const TIRAGE_COOLDOWN_MS = 60 * 60 * 1000
 
 const RARITY_WEIGHTS = {
-  common: 50,
-  rare: 30,
-  epic: 16,
-  legendary: 3,
-  mythic: 1,
+  common: 500,
+  rare: 300,
+  epic: 160,
+  legendary: 38,
+  mythic: 2,
 }
 
 const RARITY_COLORS = {
