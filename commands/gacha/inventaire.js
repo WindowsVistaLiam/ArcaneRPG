@@ -15,6 +15,8 @@ const {
   MAX_LEVEL,
 } = require("../../utils/cardBattle")
 
+const EPHEMERAL_FLAG = 64
+
 const CATEGORIES = {
   resume: {
     label: "📌 Résumé",
@@ -209,8 +211,10 @@ async function getUpgradeStats(client, userId) {
       if (
         !bestUpgradeEntry ||
         (upgrade.level || 1) > (bestUpgradeEntry.upgrade.level || 1) ||
-        ((upgrade.level || 1) === (bestUpgradeEntry.upgrade.level || 1) &&
-          stats.power > bestUpgradeEntry.stats.power)
+        (
+          (upgrade.level || 1) === (bestUpgradeEntry.upgrade.level || 1) &&
+          stats.power > bestUpgradeEntry.stats.power
+        )
       ) {
         bestUpgradeEntry = entry
       }
@@ -263,14 +267,25 @@ async function buildInventoryEmbed(client, user, category = "resume") {
   const safeCategory = CATEGORIES[category] ? category : "resume"
   const categoryData = CATEGORIES[safeCategory]
 
-  const wallet = await getWallet(client, user.id)
-  const cardsStats = await getCardsStats(client, user.id)
-  const effects = await getEffects(client, user.id)
-  const items = await getItems(client, user.id)
-  const cosmetics = await getCosmetics(client, user.id)
-  const combatStats = await getCombatStats(client, user.id)
-  const profile = await getProfile(client, user.id)
-  const upgradeStats = await getUpgradeStats(client, user.id)
+  const [
+    wallet,
+    cardsStats,
+    effects,
+    items,
+    cosmetics,
+    combatStats,
+    profile,
+    upgradeStats,
+  ] = await Promise.all([
+    getWallet(client, user.id),
+    getCardsStats(client, user.id),
+    getEffects(client, user.id),
+    getItems(client, user.id),
+    getCosmetics(client, user.id),
+    getCombatStats(client, user.id),
+    getProfile(client, user.id),
+    getUpgradeStats(client, user.id),
+  ])
 
   const embed = new EmbedBuilder()
     .setTitle(`${categoryData.label} — Inventaire de ${user.username}`)
@@ -471,16 +486,19 @@ module.exports = {
     ),
 
   async execute(interaction, client) {
+    await interaction.deferReply({
+      flags: EPHEMERAL_FLAG,
+    })
+
     const category = interaction.options.getString("categorie") || "resume"
     const safeCategory = CATEGORIES[category] ? category : "resume"
 
     const embed = await buildInventoryEmbed(client, interaction.user, safeCategory)
     const row = buildInventoryButtons(safeCategory, interaction.user.id)
 
-    return interaction.reply({
+    return interaction.editReply({
       embeds: [embed],
       components: [row],
-      ephemeral: true,
     })
   },
 
@@ -497,16 +515,18 @@ module.exports = {
     if (interaction.user.id !== userId) {
       return interaction.reply({
         content: "❌ Tu ne peux pas utiliser l'inventaire d'un autre joueur.",
-        ephemeral: true,
+        flags: EPHEMERAL_FLAG,
       })
     }
+
+    await interaction.deferUpdate()
 
     const safeCategory = CATEGORIES[category] ? category : "resume"
 
     const embed = await buildInventoryEmbed(client, interaction.user, safeCategory)
     const row = buildInventoryButtons(safeCategory, interaction.user.id)
 
-    return interaction.update({
+    return interaction.editReply({
       embeds: [embed],
       components: [row],
     })

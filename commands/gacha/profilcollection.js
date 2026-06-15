@@ -150,7 +150,14 @@ async function getCollectionStats(client, userId) {
       upgradedCardsCount += 1
     }
 
-    if (!highestUpgrade || (entry.upgrade.level || 1) > (highestUpgrade.upgrade.level || 1)) {
+    if (
+      !highestUpgrade ||
+      (entry.upgrade.level || 1) > (highestUpgrade.upgrade.level || 1) ||
+      (
+        (entry.upgrade.level || 1) === (highestUpgrade.upgrade.level || 1) &&
+        entry.upgradedStats.power > highestUpgrade.upgradedStats.power
+      )
+    ) {
       highestUpgrade = entry
     }
   }
@@ -311,10 +318,19 @@ function getProfileImage(favoriteEntry, bestCardEntry) {
 
 async function buildProfileCollectionEmbed(client, guild, user) {
   const displayName = await getDisplayName(client, guild, user.id)
-  const wallet = await getWallet(client, user.id)
-  const combatStats = await getCombatStats(client, user.id)
-  const profile = await getProfile(client, user.id)
-  const collectionStats = await getCollectionStats(client, user.id)
+
+  const [
+    wallet,
+    combatStats,
+    profile,
+    collectionStats,
+  ] = await Promise.all([
+    getWallet(client, user.id),
+    getCombatStats(client, user.id),
+    getProfile(client, user.id),
+    getCollectionStats(client, user.id),
+  ])
+
   const favoriteEntry = await getFavoriteCardEntry(client, user.id, profile)
 
   const collectorRank = getCollectorRank(
@@ -429,6 +445,8 @@ module.exports = {
     ),
 
   async execute(interaction, client) {
+    await interaction.deferReply()
+
     const user = interaction.options.getUser("utilisateur") || interaction.user
 
     const embed = await buildProfileCollectionEmbed(
@@ -437,7 +455,7 @@ module.exports = {
       user
     )
 
-    return interaction.reply({
+    return interaction.editReply({
       embeds: [embed],
     })
   },
