@@ -1,122 +1,136 @@
-const { ObjectId } = require("mongodb");
+const EPHEMERAL_FLAG = 64
+
+function getInteractionLabel(interaction) {
+  if (interaction.isChatInputCommand()) {
+    return `/${interaction.commandName}`
+  }
+
+  if (interaction.isButton()) {
+    return `button:${interaction.customId}`
+  }
+
+  if (interaction.isStringSelectMenu()) {
+    return `select:${interaction.customId}`
+  }
+
+  if (interaction.isModalSubmit()) {
+    return `modal:${interaction.customId}`
+  }
+
+  return interaction.type
+}
+
+function isUnknownInteractionError(error) {
+  return error?.code === 10062 || error?.rawError?.code === 10062
+}
+
+async function safeErrorReply(interaction, message) {
+  try {
+    if (interaction.replied) {
+      return interaction.followUp({
+        content: message,
+        flags: EPHEMERAL_FLAG,
+      }).catch(() => {})
+    }
+
+    if (interaction.deferred) {
+      return interaction.editReply({
+        content: message,
+      }).catch(() => {})
+    }
+
+    return interaction.reply({
+      content: message,
+      flags: EPHEMERAL_FLAG,
+    }).catch(() => {})
+  } catch {
+    return null
+  }
+}
 
 module.exports = {
   name: "interactionCreate",
 
   async execute(interaction, client) {
+    const label = getInteractionLabel(interaction)
+
     try {
-      // --- Slash commands ---
       if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
+        const command = client.commands.get(interaction.commandName)
 
         if (!command) {
           return interaction.reply({
             content: "❌ Commande introuvable.",
-            ephemeral: true,
-          });
+            flags: EPHEMERAL_FLAG,
+          }).catch(() => {})
         }
 
-        await command.execute(interaction, client);
-        return;
+        console.log(`➡️ Interaction commande : ${label}`)
+        await command.execute(interaction, client)
+        return
       }
 
-      // --- Menus déroulants ---
-      if (interaction.isStringSelectMenu()) {
-        for (const command of client.commands.values()) {
-          if (typeof command.handleSelect === "function") {
-            await command.handleSelect(interaction, client);
-          }
-        }
-
-        return;
-      }
-
-      // --- Boutons ---
       if (interaction.isButton()) {
+        console.log(`➡️ Interaction bouton : ${label}`)
+
         for (const command of client.commands.values()) {
           if (typeof command.handleButton === "function") {
-            await command.handleButton(interaction, client);
+            await command.handleButton(interaction, client)
+
+            if (interaction.replied || interaction.deferred) {
+              break
+            }
           }
         }
 
-        return;
+        return
       }
 
-      // --- Modal submit pour /editperso ---
-      if (
-        interaction.isModalSubmit() &&
-        interaction.customId.startsWith("edit_modal_")
-      ) {
-        const charId = interaction.customId.split("_")[2];
-        const characters = client.db.collection("characters");
+      if (interaction.isStringSelectMenu()) {
+        console.log(`➡️ Interaction select : ${label}`)
 
-        const nomPrenom = interaction.fields.getTextInputValue("nom_prenom");
+        for (const command of client.commands.values()) {
+          if (typeof command.handleSelect === "function") {
+            await command.handleSelect(interaction, client)
 
-        let nom = "";
-        let prenom = "";
-
-        if (nomPrenom) {
-          const parts = nomPrenom.split(" ");
-          prenom = parts.shift() || "";
-          nom = parts.join(" ") || "";
+            if (interaction.replied || interaction.deferred) {
+              break
+            }
+          }
         }
 
-        await characters.updateOne(
-          { _id: new ObjectId(charId) },
-          {
-            $set: {
-              nom: nom,
-              prenom: prenom,
-              age: interaction.fields.getTextInputValue("age"),
-              sexe: interaction.fields.getTextInputValue("sexe"),
-              orientation: interaction.fields.getTextInputValue("orientation"),
-              description: interaction.fields.getTextInputValue("description"),
-            },
-          }
-        );
-
-        await interaction.reply({
-          content: "✅ Personnage mis à jour !",
-          ephemeral: true,
-        });
-
-        return;
+        return
       }
 
-      // --- Autres modals : /image, futures commandes, etc. ---
       if (interaction.isModalSubmit()) {
+        console.log(`➡️ Interaction modal : ${label}`)
+
         for (const command of client.commands.values()) {
           if (typeof command.handleModal === "function") {
-            await command.handleModal(interaction, client);
+            await command.handleModal(interaction, client)
+
+            if (interaction.replied || interaction.deferred) {
+              break
+            }
           }
         }
 
-        return;
+        return
       }
-    } catch (err) {
-      console.error("❌ Erreur interaction :", err);
+    } catch (error) {
+      if (isUnknownInteractionError(error)) {
+        console.warn(`⚠️ Interaction expirée : ${label}`)
+        console.warn("Cause probable : la commande a mis plus de 3 secondes avant de répondre.")
+        return
+      }
 
-      if (interaction.replied || interaction.deferred) {
-        await interaction
-          .editReply({
-            content: "❌ Une erreur est survenue.",
-          })
-          .catch(async () => {
-            await interaction
-              .followUp({
-                content: "❌ Une erreur est survenue.",
-                ephemeral: true,
-              })
-              .catch(() => {});
-          });
-      } else {
-        await interaction
-          .reply({
-            content: "❌ Une erreur est survenue.",
-            ephemeral: true,
-          })
-          .catch(() => {});
-      }
+      console.error(`❌ Erreur interaction : ${label}`)
+      console.error(error)
+
+      await safeErrorReply(
+        interaction,
+        "❌ Une erreur est survenue pendant l'exécution de cette interaction."
+      )
     }
   },
-};  
+}
