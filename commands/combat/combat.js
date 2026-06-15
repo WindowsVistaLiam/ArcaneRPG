@@ -80,6 +80,25 @@ function getCardFromCatalog(cardKey) {
   return arcaneCards.find((card) => card.key === cardKey)
 }
 
+function buildCardFromPlayerCard(playerCard) {
+  const catalogCard = getCardFromCatalog(playerCard.cardKey)
+
+  if (catalogCard) {
+    return catalogCard
+  }
+
+  return {
+    key: playerCard.cardKey,
+    name: playerCard.cardName || playerCard.cardKey,
+    characterName: playerCard.cardName || playerCard.cardKey,
+    rarity: playerCard.rarity || "common",
+    rarityLabel: playerCard.rarityLabel || "Commun",
+    value: playerCard.value || 0,
+    image: playerCard.image || "",
+    description: playerCard.description || "",
+  }
+}
+
 function formatRemainingTime(ms) {
   const totalMinutes = Math.ceil(ms / 60000)
   const hours = Math.floor(totalMinutes / 60)
@@ -221,6 +240,102 @@ async function consumeFirstAvailableEffect(client, userId, effectKeys) {
   }
 }
 
+async function getFavoriteCardKey(client, userId) {
+  const profile = await client.db.collection("player_profiles").findOne({
+    userId,
+  })
+
+  return profile?.favoriteCardKey || null
+}
+
+async function getOwnedPlayerCard(client, userId, cardKey) {
+  return client.db.collection("player_cards").findOne({
+    userId,
+    cardKey,
+  })
+}
+
+async function getFavoriteCombatCard(client, userId) {
+  const favoriteCardKey = await getFavoriteCardKey(client, userId)
+
+  if (!favoriteCardKey) {
+    return {
+      card: null,
+      reason: "no_favorite",
+    }
+  }
+
+  const ownedCard = await getOwnedPlayerCard(client, userId, favoriteCardKey)
+
+  if (!ownedCard) {
+    return {
+      card: null,
+      reason: "favorite_not_owned",
+      favoriteCardKey,
+    }
+  }
+
+  return {
+    card: buildCardFromPlayerCard(ownedCard),
+    reason: "ok",
+    favoriteCardKey,
+  }
+}
+
+async function resolveChosenCombatCard(client, userId, search) {
+  if (search && search.trim()) {
+    const card = findCard(search)
+
+    if (!card) {
+      return {
+        success: false,
+        message: `❌ Aucune carte trouvée pour : **${search}**.`,
+      }
+    }
+
+    const ownedCard = await getOwnedPlayerCard(client, userId, card.key)
+
+    if (!ownedCard) {
+      return {
+        success: false,
+        message: `❌ Tu ne possèdes pas cette carte : **${card.name}**.`,
+      }
+    }
+
+    return {
+      success: true,
+      card,
+      usedFavorite: false,
+    }
+  }
+
+  const favorite = await getFavoriteCombatCard(client, userId)
+
+  if (favorite.card) {
+    return {
+      success: true,
+      card: favorite.card,
+      usedFavorite: true,
+    }
+  }
+
+  if (favorite.reason === "favorite_not_owned") {
+    return {
+      success: false,
+      message:
+        "❌ Ta carte favorite n'est plus valide ou tu ne la possèdes plus.\n" +
+        "Utilise `/favori carte:<nom>` pour définir une nouvelle carte favorite, ou indique une carte directement dans `/combat`.",
+    }
+  }
+
+  return {
+    success: false,
+    message:
+      "❌ Tu n'as pas indiqué de carte et tu n'as aucune carte favorite définie.\n" +
+      "Utilise `/favori carte:<nom>` pour définir ta carte de combat par défaut, ou utilise `/combat ... carte:<nom>`.",
+  }
+}
+
 function buildShortLogs(logs) {
   return logs
     .slice(0, 8)
@@ -245,19 +360,7 @@ async function getBestPlayerCard(client, userId) {
   let bestPower = -1
 
   for (const playerCard of playerCards) {
-    const catalogCard = getCardFromCatalog(playerCard.cardKey)
-
-    const card = catalogCard || {
-      key: playerCard.cardKey,
-      name: playerCard.cardName || playerCard.cardKey,
-      characterName: playerCard.cardName || playerCard.cardKey,
-      rarity: playerCard.rarity || "common",
-      rarityLabel: playerCard.rarityLabel || "Commun",
-      value: playerCard.value || 0,
-      image: playerCard.image || "",
-      description: playerCard.description || "",
-    }
-
+    const card = buildCardFromPlayerCard(playerCard)
     const stats = await getCardStatsWithUpgrade(client, userId, card)
 
     if (stats.power > bestPower) {
@@ -269,9 +372,35 @@ async function getBestPlayerCard(client, userId) {
   return bestCard
 }
 
+async function getAutoPvpDefenseCard(client, userId) {
+  const favorite = await getFavoriteCombatCard(client, userId)
+
+  if (favorite.card) {
+    return {
+      card: favorite.card,
+      source: "favorite",
+    }
+  }
+
+  const bestCard = await getBestPlayerCard(client, userId)
+
+  if (bestCard) {
+    return {
+      card: bestCard,
+      source: "best",
+    }
+  }
+
+  return {
+    card: null,
+    source: "none",
+  }
+}
+
 function buildPveEmbed({
   interaction,
   playerCard,
+  usedFavorite,
   enemy,
   battle,
   hasWon,
@@ -308,7 +437,9 @@ function buildPveEmbed({
     .setTitle(`⚔️ Combat PVE — ${interaction.user.username}`)
     .setColor(hasWon ? 0x2ecc71 : 0xe74c3c)
     .setDescription(
-      `${emoji} **${playerCard.name}** affronte **${enemy.name}**.\n\n${resultText}`
+      `${emoji} **${playerCard.name}** affronte **${enemy.name}**.\n` +
+      `${usedFavorite ? "⭐ Carte favorite utilisée automatiquement.\n" : ""}` +
+      `\n${resultText}`
     )
     .addFields(
       {
@@ -373,6 +504,7 @@ function buildPvpChallengeEmbed({
   challengerStats,
   challengerName,
   opponentName,
+  usedFavorite,
 }) {
   const stats = challengerStats || getCardStats(challengerCard)
   const emoji = RARITY_EMOJIS[challengerCard.rarity] || "🎴"
@@ -382,6 +514,7 @@ function buildPvpChallengeEmbed({
     .setColor(RARITY_COLORS[challengerCard.rarity] || 0x5865f2)
     .setDescription(
       `${challenger} défie ${opponent} en combat de cartes !\n\n` +
+      `${usedFavorite ? "⭐ Carte favorite utilisée automatiquement par le challenger.\n\n" : ""}` +
       `**${opponentName}**, accepte ou refuse le combat.`
     )
     .addFields(
@@ -396,7 +529,7 @@ function buildPvpChallengeEmbed({
         inline: true,
       },
       {
-        name: `${emoji} Carte utilisée`,
+        name: `${emoji} Carte du challenger`,
         value:
           `**${challengerCard.name}**\n` +
           `Rareté : **${challengerCard.rarityLabel || challengerCard.rarity}**\n` +
@@ -409,7 +542,7 @@ function buildPvpChallengeEmbed({
       }
     )
     .setFooter({
-      text: "Le joueur défié combattra avec sa meilleure carte, améliorations incluses.",
+      text: "Le joueur défié utilisera sa carte favorite si elle est valide, sinon sa meilleure carte.",
     })
     .setTimestamp()
 
@@ -441,6 +574,7 @@ async function buildPvpResultEmbed({
   opponentId,
   challengerCard,
   opponentCard,
+  opponentCardSource,
   battle,
   transferResult,
   protectionResult,
@@ -465,6 +599,10 @@ async function buildPvpResultEmbed({
   const winnerName = challengerWon ? challengerName : opponentName
   const loserName = challengerWon ? opponentName : challengerName
 
+  const defenderSourceText = opponentCardSource === "favorite"
+    ? "⭐ Le défenseur a utilisé sa carte favorite."
+    : "⚡ Le défenseur n'avait pas de favorite valide, sa meilleure carte a été utilisée."
+
   const fragmentText = protectionResult?.protected
     ? `Aucun fragment n'a été transféré.\n${protectionResult.label} a protégé **${loserName}**.`
     : `💠 **${transferResult.transferred}** fragment${transferResult.transferred > 1 ? "s" : ""} transféré${transferResult.transferred > 1 ? "s" : ""} du perdant vers le gagnant.`
@@ -473,7 +611,9 @@ async function buildPvpResultEmbed({
     .setTitle("🏆 Résultat du combat PVP")
     .setColor(challengerWon ? 0x2ecc71 : 0xe67e22)
     .setDescription(
-      `**${winnerName}** remporte le combat contre **${loserName}** !\n\n${fragmentText}`
+      `**${winnerName}** remporte le combat contre **${loserName}** !\n\n` +
+      `${defenderSourceText}\n\n` +
+      `${fragmentText}`
     )
     .addFields(
       {
@@ -543,8 +683,8 @@ module.exports = {
         .addStringOption((option) =>
           option
             .setName("carte")
-            .setDescription("Nom ou ID de la carte que tu veux utiliser")
-            .setRequired(true)
+            .setDescription("Nom ou ID de la carte à utiliser. Si vide, ta carte favorite est utilisée.")
+            .setRequired(false)
         )
     )
 
@@ -561,8 +701,8 @@ module.exports = {
         .addStringOption((option) =>
           option
             .setName("carte")
-            .setDescription("Nom ou ID de la carte que tu veux utiliser")
-            .setRequired(true)
+            .setDescription("Nom ou ID de la carte à utiliser. Si vide, ta carte favorite est utilisée.")
+            .setRequired(false)
         )
     ),
 
@@ -580,26 +720,20 @@ module.exports = {
       }
 
       const search = interaction.options.getString("carte")
-      const playerCard = findCard(search)
+      const resolvedCard = await resolveChosenCombatCard(
+        client,
+        interaction.user.id,
+        search
+      )
 
-      if (!playerCard) {
+      if (!resolvedCard.success) {
         return interaction.reply({
-          content: `❌ Aucune carte trouvée pour : **${search}**.`,
+          content: resolvedCard.message,
           ephemeral: true,
         })
       }
 
-      const ownedCard = await client.db.collection("player_cards").findOne({
-        userId: interaction.user.id,
-        cardKey: playerCard.key,
-      })
-
-      if (!ownedCard) {
-        return interaction.reply({
-          content: `❌ Tu ne possèdes pas cette carte : **${playerCard.name}**.`,
-          ephemeral: true,
-        })
-      }
+      const playerCard = resolvedCard.card
 
       const playerStats = await getCardStatsWithUpgrade(
         client,
@@ -680,6 +814,7 @@ module.exports = {
       const embed = buildPveEmbed({
         interaction,
         playerCard,
+        usedFavorite: resolvedCard.usedFavorite,
         enemy,
         battle,
         hasWon,
@@ -716,30 +851,23 @@ module.exports = {
         })
       }
 
-      const challengerCard = findCard(search)
+      const resolvedCard = await resolveChosenCombatCard(
+        client,
+        interaction.user.id,
+        search
+      )
 
-      if (!challengerCard) {
+      if (!resolvedCard.success) {
         return interaction.reply({
-          content: `❌ Aucune carte trouvée pour : **${search}**.`,
+          content: resolvedCard.message,
           ephemeral: true,
         })
       }
 
-      const ownedCard = await client.db.collection("player_cards").findOne({
-        userId: interaction.user.id,
-        cardKey: challengerCard.key,
-      })
+      const challengerCard = resolvedCard.card
+      const opponentAutoCard = await getAutoPvpDefenseCard(client, opponent.id)
 
-      if (!ownedCard) {
-        return interaction.reply({
-          content: `❌ Tu ne possèdes pas cette carte : **${challengerCard.name}**.`,
-          ephemeral: true,
-        })
-      }
-
-      const opponentBestCard = await getBestPlayerCard(client, opponent.id)
-
-      if (!opponentBestCard) {
+      if (!opponentAutoCard.card) {
         return interaction.reply({
           content: `❌ ${opponent} ne possède aucune carte et ne peut donc pas combattre.`,
           ephemeral: true,
@@ -757,6 +885,7 @@ module.exports = {
         challengerId: interaction.user.id,
         opponentId: opponent.id,
         challengerCardKey: challengerCard.key,
+        challengerUsedFavorite: resolvedCard.usedFavorite,
         status: "pending",
         guildId: interaction.guildId,
         channelId: interaction.channelId,
@@ -785,6 +914,7 @@ module.exports = {
         challengerStats,
         challengerName,
         opponentName,
+        usedFavorite: resolvedCard.usedFavorite,
       })
 
       const row = buildPvpButtons(result.insertedId.toString())
@@ -901,10 +1031,11 @@ module.exports = {
         })
       }
 
-      const stillOwnsCard = await client.db.collection("player_cards").findOne({
-        userId: session.challengerId,
-        cardKey: challengerCard.key,
-      })
+      const stillOwnsCard = await getOwnedPlayerCard(
+        client,
+        session.challengerId,
+        challengerCard.key
+      )
 
       if (!stillOwnsCard) {
         await sessions.updateOne(
@@ -926,9 +1057,12 @@ module.exports = {
         })
       }
 
-      const opponentCard = await getBestPlayerCard(client, session.opponentId)
+      const opponentAutoCard = await getAutoPvpDefenseCard(
+        client,
+        session.opponentId
+      )
 
-      if (!opponentCard) {
+      if (!opponentAutoCard.card) {
         await sessions.updateOne(
           {
             _id: new ObjectId(sessionId),
@@ -947,6 +1081,8 @@ module.exports = {
           components: [],
         })
       }
+
+      const opponentCard = opponentAutoCard.card
 
       const challengerStats = await getCardStatsWithUpgrade(
         client,
@@ -1021,6 +1157,7 @@ module.exports = {
           $set: {
             status: "completed",
             opponentCardKey: opponentCard.key,
+            opponentCardSource: opponentAutoCard.source,
             winnerUserId: winnerId,
             loserUserId: loserId,
             winnerCardKey: battle.winner.key,
@@ -1040,6 +1177,7 @@ module.exports = {
         opponentId: session.opponentId,
         challengerCard,
         opponentCard,
+        opponentCardSource: opponentAutoCard.source,
         battle,
         transferResult,
         protectionResult,

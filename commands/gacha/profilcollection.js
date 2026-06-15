@@ -4,7 +4,14 @@ const {
 } = require("discord.js")
 
 const arcaneCards = require("../../data/arcaneCards")
-const { getCardStats } = require("../../utils/cardBattle")
+
+const {
+  getCardStats,
+  getCardStatsWithUpgrade,
+  getCardUpgrade,
+  LEVEL_MULTIPLIERS,
+  MAX_LEVEL,
+} = require("../../utils/cardBattle")
 
 const RARITY_ORDER = {
   mythic: 1,
@@ -32,6 +39,11 @@ const RARITY_EMOJIS = {
 
 function getCardFromCatalog(cardKey) {
   return arcaneCards.find((card) => card.key === cardKey)
+}
+
+function getGlobalBonusPercent(level) {
+  const multiplier = LEVEL_MULTIPLIERS[level] || 0
+  return Math.round(multiplier * 100)
 }
 
 async function getDisplayName(client, guild, userId) {
@@ -99,9 +111,18 @@ async function getCollectionStats(client, userId) {
   for (const cardKey of uniqueCardKeys) {
     const catalogCard = getCardFromCatalog(cardKey)
 
-    if (catalogCard) {
-      uniqueCards.push(catalogCard)
-    }
+    if (!catalogCard) continue
+
+    const baseStats = getCardStats(catalogCard)
+    const upgradedStats = await getCardStatsWithUpgrade(client, userId, catalogCard)
+    const upgrade = await getCardUpgrade(client, userId, catalogCard.key)
+
+    uniqueCards.push({
+      card: catalogCard,
+      baseStats,
+      upgradedStats,
+      upgrade,
+    })
   }
 
   const rarityCounts = {
@@ -113,27 +134,45 @@ async function getCollectionStats(client, userId) {
   }
 
   let totalValue = 0
+  let upgradedCardsCount = 0
+  let highestUpgrade = null
 
-  for (const card of uniqueCards) {
+  for (const entry of uniqueCards) {
+    const card = entry.card
+
     if (rarityCounts[card.rarity] !== undefined) {
       rarityCounts[card.rarity] += 1
     }
 
     totalValue += card.value || 0
+
+    if ((entry.upgrade.level || 1) > 1) {
+      upgradedCardsCount += 1
+    }
+
+    if (!highestUpgrade || (entry.upgrade.level || 1) > (highestUpgrade.upgrade.level || 1)) {
+      highestUpgrade = entry
+    }
   }
 
-  const sortedByRarity = [...uniqueCards].sort((a, b) => {
+  const sortedByPower = [...uniqueCards].sort((a, b) => {
+    const powerDiff = (b.upgradedStats.power || 0) - (a.upgradedStats.power || 0)
+
+    if (powerDiff !== 0) {
+      return powerDiff
+    }
+
     const rarityDiff =
-      (RARITY_ORDER[a.rarity] || 99) - (RARITY_ORDER[b.rarity] || 99)
+      (RARITY_ORDER[a.card.rarity] || 99) - (RARITY_ORDER[b.card.rarity] || 99)
 
     if (rarityDiff !== 0) {
       return rarityDiff
     }
 
-    return (b.value || 0) - (a.value || 0)
+    return (b.card.value || 0) - (a.card.value || 0)
   })
 
-  const bestCard = sortedByRarity[0] || null
+  const bestCardEntry = sortedByPower[0] || null
 
   const completionPercent = arcaneCards.length > 0
     ? Math.round((uniqueCards.length / arcaneCards.length) * 100)
@@ -146,7 +185,9 @@ async function getCollectionStats(client, userId) {
     completionPercent,
     rarityCounts,
     totalValue,
-    bestCard,
+    bestCardEntry,
+    upgradedCardsCount,
+    highestUpgrade,
   }
 }
 
@@ -175,34 +216,97 @@ function formatRarityCounts(rarityCounts) {
   )
 }
 
-function formatFavoriteCard(profile) {
+function formatCardEntry(entry) {
+  if (!entry) {
+    return "Aucune carte possédée."
+  }
+
+  const card = entry.card
+  const stats = entry.upgradedStats
+  const upgrade = entry.upgrade
+  const emoji = RARITY_EMOJIS[card.rarity] || "🎴"
+  const rarityLabel = card.rarityLabel || RARITY_LABELS[card.rarity] || card.rarity
+  const bonusPercent = getGlobalBonusPercent(upgrade.level || 1)
+
+  return (
+    `${emoji} **${card.name}**\n` +
+    `Rareté : **${rarityLabel}**\n` +
+    `Niveau : **${upgrade.level || 1}/${MAX_LEVEL}** (**+${bonusPercent}%**)\n` +
+    `Puissance : **${stats.power}**\n` +
+    `Valeur : **${card.value || 0} pts**\n` +
+    `ID : \`${card.key}\``
+  )
+}
+
+async function getFavoriteCardEntry(client, userId, profile) {
   if (!profile.favoriteCardKey) {
-    return "Aucune carte favorite définie."
+    return null
+  }
+
+  const ownedCard = await client.db.collection("player_cards").findOne({
+    userId,
+    cardKey: profile.favoriteCardKey,
+  })
+
+  if (!ownedCard) {
+    return {
+      missing: true,
+      cardKey: profile.favoriteCardKey,
+    }
   }
 
   const card = getCardFromCatalog(profile.favoriteCardKey)
 
   if (!card) {
-    return `Carte favorite introuvable : \`${profile.favoriteCardKey}\``
+    return {
+      missing: true,
+      cardKey: profile.favoriteCardKey,
+    }
   }
 
-  const stats = getCardStats(card)
-  const emoji = RARITY_EMOJIS[card.rarity] || "🎴"
+  const baseStats = getCardStats(card)
+  const upgradedStats = await getCardStatsWithUpgrade(client, userId, card)
+  const upgrade = await getCardUpgrade(client, userId, card.key)
+
+  return {
+    card,
+    baseStats,
+    upgradedStats,
+    upgrade,
+  }
+}
+
+function formatFavoriteCardEntry(favoriteEntry) {
+  if (!favoriteEntry) {
+    return (
+      "Aucune carte favorite définie.\n\n" +
+      "Utilise `/favori carte:<nom>` pour définir ta carte de combat par défaut."
+    )
+  }
+
+  if (favoriteEntry.missing) {
+    return (
+      `Carte favorite introuvable ou non possédée : \`${favoriteEntry.cardKey}\`\n\n` +
+      "Utilise `/favori carte:<nom>` pour définir une nouvelle carte favorite."
+    )
+  }
 
   return (
-    `${emoji} **${card.name}**\n` +
-    `Rareté : **${card.rarityLabel || RARITY_LABELS[card.rarity] || card.rarity}**\n` +
-    `Puissance : **${stats.power}**\n` +
-    `ID : \`${card.key}\``
+    `${formatCardEntry(favoriteEntry)}\n\n` +
+    "⭐ Cette carte est aussi utilisée par défaut avec `/combat pve` et `/combat pvp`."
   )
 }
 
-function getFavoriteCardImage(profile) {
-  if (!profile.favoriteCardKey) return null
+function getProfileImage(favoriteEntry, bestCardEntry) {
+  if (favoriteEntry?.card?.image) {
+    return favoriteEntry.card.image
+  }
 
-  const card = getCardFromCatalog(profile.favoriteCardKey)
+  if (bestCardEntry?.card?.image) {
+    return bestCardEntry.card.image
+  }
 
-  return card?.image || null
+  return null
 }
 
 async function buildProfileCollectionEmbed(client, guild, user) {
@@ -211,22 +315,24 @@ async function buildProfileCollectionEmbed(client, guild, user) {
   const combatStats = await getCombatStats(client, user.id)
   const profile = await getProfile(client, user.id)
   const collectionStats = await getCollectionStats(client, user.id)
+  const favoriteEntry = await getFavoriteCardEntry(client, user.id, profile)
 
   const collectorRank = getCollectorRank(
     collectionStats.uniqueCards,
     collectionStats.totalAvailableCards
   )
 
-  const bestCard = collectionStats.bestCard
-  const bestCardText = bestCard
-    ? `${RARITY_EMOJIS[bestCard.rarity] || "🎴"} **${bestCard.name}**\nRareté : **${bestCard.rarityLabel || bestCard.rarity}**\nValeur : **${bestCard.value || 0} pts**`
-    : "Aucune carte possédée."
-
   const activeTitle = profile.activeTitle || "Aucun titre"
   const activeBadge = profile.activeBadge || "Aucun badge"
 
   const totalWins = combatStats.pveWins + combatStats.pvpWins
   const totalLosses = combatStats.pveLosses + combatStats.pvpLosses
+
+  const bestCardText = formatCardEntry(collectionStats.bestCardEntry)
+
+  const highestUpgradeText = collectionStats.highestUpgrade
+    ? formatCardEntry(collectionStats.highestUpgrade)
+    : "Aucune carte améliorée."
 
   const embed = new EmbedBuilder()
     .setTitle(`📘 Profil collectionneur — ${displayName}`)
@@ -267,6 +373,13 @@ async function buildProfileCollectionEmbed(client, guild, user) {
         inline: true,
       },
       {
+        name: "⚙️ Améliorations",
+        value:
+          `Cartes améliorées : **${collectionStats.upgradedCardsCount}**\n` +
+          `Niveau max possible : **${MAX_LEVEL}**`,
+        inline: true,
+      },
+      {
         name: "💠 Combats — fragments",
         value:
           `Gagnés : **${combatStats.fragmentsWon}**\n` +
@@ -275,27 +388,30 @@ async function buildProfileCollectionEmbed(client, guild, user) {
         inline: true,
       },
       {
-        name: "🌟 Meilleure carte",
+        name: "⭐ Carte favorite / combat par défaut",
+        value: formatFavoriteCardEntry(favoriteEntry),
+        inline: false,
+      },
+      {
+        name: "🏆 Meilleure carte actuelle",
         value: bestCardText,
         inline: false,
       },
       {
-        name: "⭐ Carte favorite",
-        value: formatFavoriteCard(profile),
+        name: "⚙️ Meilleure amélioration",
+        value: highestUpgradeText,
         inline: false,
       }
     )
     .setFooter({
-      text: "Les titres, badges et carte favorite seront configurables avec les prochaines commandes.",
+      text: "La carte favorite est utilisée automatiquement si aucune carte n'est précisée dans /combat.",
     })
     .setTimestamp()
 
-  const favoriteImage = getFavoriteCardImage(profile)
+  const image = getProfileImage(favoriteEntry, collectionStats.bestCardEntry)
 
-  if (favoriteImage) {
-    embed.setImage(favoriteImage)
-  } else if (bestCard?.image) {
-    embed.setImage(bestCard.image)
+  if (image) {
+    embed.setImage(image)
   }
 
   return embed
