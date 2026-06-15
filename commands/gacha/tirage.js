@@ -10,7 +10,7 @@ const { ObjectId } = require("mongodb")
 const arcaneCards = require("../../data/arcaneCards")
 const { progressQuest } = require("../../utils/quests")
 
-const TIRAGE_COOLDOWN_MS = 60 * 60 * 1000
+const TIRAGE_COOLDOWN_MS = 2 * 60 * 60 * 1000
 
 const DEFAULT_RARITY_WEIGHTS = {
   common: 800,
@@ -207,7 +207,7 @@ function pickRandomCard(weights) {
 function generateTenCards(weights) {
   const cards = []
 
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 6; i++) {
     cards.push(pickRandomCard(weights))
   }
 
@@ -451,7 +451,7 @@ async function renderSession(interaction, session) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("tirage")
-    .setDescription("Faire un tirage de 10 cartes Arcane"),
+    .setDescription("Faire un tirage de 6 cartes Arcane"),
 
   async execute(interaction, client) {
     const cooldown = await checkTirageCooldown(client, interaction.user.id)
@@ -515,7 +515,7 @@ module.exports = {
 
     return interaction.reply({
       content:
-        `🎲 Tirage de 10 cartes terminé.\n` +
+        `🎲 Tirage des 6 cartes terminé.\n` +
         `${drawBoost.label ? `🍀 Boost consommé : **${drawBoost.label}**\n` : ""}` +
         `🆕 **${savedSession.newCardsCount}** nouvelle${savedSession.newCardsCount > 1 ? "s" : ""} carte${savedSession.newCardsCount > 1 ? "s" : ""} ajoutée${savedSession.newCardsCount > 1 ? "s" : ""}.\n` +
         `♻️ **${savedSession.duplicatesCount}** doublon${savedSession.duplicatesCount > 1 ? "s" : ""} converti${savedSession.duplicatesCount > 1 ? "s" : ""} en 💠 **${savedSession.totalFragmentsEarned}** fragment${savedSession.totalFragmentsEarned > 1 ? "s" : ""}.`,
