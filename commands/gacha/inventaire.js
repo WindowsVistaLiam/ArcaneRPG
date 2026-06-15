@@ -8,6 +8,13 @@ const {
 
 const arcaneCards = require("../../data/arcaneCards")
 
+const {
+  getCardStatsWithUpgrade,
+  getCardUpgrade,
+  LEVEL_MULTIPLIERS,
+  MAX_LEVEL,
+} = require("../../utils/cardBattle")
+
 const CATEGORIES = {
   resume: {
     label: "📌 Résumé",
@@ -27,16 +34,31 @@ const CATEGORIES = {
   },
 }
 
+const RARITY_EMOJIS = {
+  common: "⚪",
+  rare: "🔵",
+  epic: "🟣",
+  legendary: "🟡",
+  mythic: "🔴",
+}
+
 function formatList(items, formatter, emptyText = "Aucun élément.") {
-  if (!items.length) {
-    return emptyText
-  }
+  if (!items.length) return emptyText
 
   return items
     .slice(0, 20)
     .map(formatter)
     .join("\n")
     .slice(0, 1024)
+}
+
+function getCardFromCatalog(cardKey) {
+  return arcaneCards.find((card) => card.key === cardKey)
+}
+
+function getGlobalBonusPercent(level) {
+  const multiplier = LEVEL_MULTIPLIERS[level] || 0
+  return Math.round(multiplier * 100)
 }
 
 async function getWallet(client, userId) {
@@ -56,7 +78,13 @@ async function getCardsStats(client, userId) {
     })
     .toArray()
 
-  const uniqueCardKeys = new Set(playerCards.map((card) => card.cardKey))
+  const uniqueMap = new Map()
+
+  for (const playerCard of playerCards) {
+    if (!uniqueMap.has(playerCard.cardKey)) {
+      uniqueMap.set(playerCard.cardKey, playerCard)
+    }
+  }
 
   const rarityCounts = {
     common: 0,
@@ -66,8 +94,9 @@ async function getCardsStats(client, userId) {
     mythic: 0,
   }
 
-  for (const card of playerCards) {
-    const rarity = card.rarity || "common"
+  for (const [cardKey, playerCard] of uniqueMap.entries()) {
+    const catalogCard = getCardFromCatalog(cardKey)
+    const rarity = catalogCard?.rarity || playerCard.rarity || "common"
 
     if (rarityCounts[rarity] !== undefined) {
       rarityCounts[rarity] += 1
@@ -76,7 +105,7 @@ async function getCardsStats(client, userId) {
 
   return {
     totalCards: playerCards.length,
-    uniqueCards: uniqueCardKeys.size,
+    uniqueCards: uniqueMap.size,
     totalAvailableCards: arcaneCards.length,
     rarityCounts,
   }
@@ -148,6 +177,88 @@ async function getProfile(client, userId) {
   }
 }
 
+async function getUpgradeStats(client, userId) {
+  const playerCards = await client.db.collection("player_cards")
+    .find({
+      userId,
+    })
+    .toArray()
+
+  const uniqueCardKeys = [...new Set(playerCards.map((card) => card.cardKey))]
+
+  let upgradedCardsCount = 0
+  let bestPowerEntry = null
+  let bestUpgradeEntry = null
+
+  for (const cardKey of uniqueCardKeys) {
+    const card = getCardFromCatalog(cardKey)
+    if (!card) continue
+
+    const upgrade = await getCardUpgrade(client, userId, card.key)
+    const stats = await getCardStatsWithUpgrade(client, userId, card)
+
+    const entry = {
+      card,
+      upgrade,
+      stats,
+    }
+
+    if ((upgrade.level || 1) > 1) {
+      upgradedCardsCount += 1
+
+      if (
+        !bestUpgradeEntry ||
+        (upgrade.level || 1) > (bestUpgradeEntry.upgrade.level || 1) ||
+        ((upgrade.level || 1) === (bestUpgradeEntry.upgrade.level || 1) &&
+          stats.power > bestUpgradeEntry.stats.power)
+      ) {
+        bestUpgradeEntry = entry
+      }
+    }
+
+    if (!bestPowerEntry || stats.power > bestPowerEntry.stats.power) {
+      bestPowerEntry = entry
+    }
+  }
+
+  return {
+    upgradedCardsCount,
+    bestPowerEntry,
+    bestUpgradeEntry,
+  }
+}
+
+function formatCardEntry(entry) {
+  if (!entry) return "Aucune carte."
+
+  const emoji = RARITY_EMOJIS[entry.card.rarity] || "🎴"
+  const level = entry.upgrade.level || 1
+  const bonusPercent = getGlobalBonusPercent(level)
+
+  return (
+    `${emoji} **${entry.card.name}**\n` +
+    `Niveau : **${level}/${MAX_LEVEL}** (**+${bonusPercent}%**)\n` +
+    `Puissance : **${entry.stats.power}**\n` +
+    `ID : \`${entry.card.key}\``
+  )
+}
+
+function formatFavoriteCard(profile) {
+  if (!profile.favoriteCardKey) {
+    return "Aucune carte favorite définie."
+  }
+
+  const card = getCardFromCatalog(profile.favoriteCardKey)
+
+  if (!card) {
+    return `Carte favorite introuvable : \`${profile.favoriteCardKey}\``
+  }
+
+  const emoji = RARITY_EMOJIS[card.rarity] || "🎴"
+
+  return `${emoji} **${card.name}**\n\`${card.key}\``
+}
+
 async function buildInventoryEmbed(client, user, category = "resume") {
   const safeCategory = CATEGORIES[category] ? category : "resume"
   const categoryData = CATEGORIES[safeCategory]
@@ -159,6 +270,7 @@ async function buildInventoryEmbed(client, user, category = "resume") {
   const cosmetics = await getCosmetics(client, user.id)
   const combatStats = await getCombatStats(client, user.id)
   const profile = await getProfile(client, user.id)
+  const upgradeStats = await getUpgradeStats(client, user.id)
 
   const embed = new EmbedBuilder()
     .setTitle(`${categoryData.label} — Inventaire de ${user.username}`)
@@ -170,7 +282,8 @@ async function buildInventoryEmbed(client, user, category = "resume") {
     embed.setDescription(
       `💠 Fragments disponibles : **${wallet.fragments}**\n` +
       `🎴 Cartes uniques : **${cardsStats.uniqueCards}/${cardsStats.totalAvailableCards}**\n` +
-      `🎒 Cartes totales : **${cardsStats.totalCards}**`
+      `🎒 Cartes totales : **${cardsStats.totalCards}**\n` +
+      `⚙️ Cartes améliorées : **${upgradeStats.upgradedCardsCount}**`
     )
 
     embed.addFields(
@@ -198,7 +311,16 @@ async function buildInventoryEmbed(client, user, category = "resume") {
         value:
           `Titre actif : **${profile.activeTitle || "Aucun"}**\n` +
           `Badge actif : **${profile.activeBadge || "Aucun"}**\n` +
-          `Carte favorite : **${profile.favoriteCardKey || "Aucune"}**`,
+          `Carte favorite : ${formatFavoriteCard(profile)}\n\n` +
+          "⭐ La carte favorite est utilisée par défaut dans `/combat`.",
+        inline: false,
+      },
+      {
+        name: "⚙️ Améliorations",
+        value:
+          `Cartes améliorées : **${upgradeStats.upgradedCardsCount}**\n\n` +
+          `🏆 **Meilleure puissance actuelle**\n${formatCardEntry(upgradeStats.bestPowerEntry)}\n\n` +
+          `🔧 **Meilleure amélioration**\n${formatCardEntry(upgradeStats.bestUpgradeEntry)}`,
         inline: false,
       },
       {
@@ -222,9 +344,7 @@ async function buildInventoryEmbed(client, user, category = "resume") {
       name: "🍀 Boosts / protections",
       value: formatList(
         effects,
-        (effect) => {
-          return `**${effect.label || effect.effectKey}** — x${effect.uses || 0}`
-        },
+        (effect) => `**${effect.label || effect.effectKey}** — x${effect.uses || 0}`,
         "Aucun effet actif."
       ),
       inline: false,
@@ -237,17 +357,26 @@ async function buildInventoryEmbed(client, user, category = "resume") {
       "Voici tes objets d'amélioration et ressources spéciales."
     )
 
-    embed.addFields({
-      name: "⚙️ Objets possédés",
-      value: formatList(
-        items,
-        (item) => {
-          return `**${item.label || item.itemKey}** — x${item.quantity || 0}`
-        },
-        "Aucun objet possédé."
-      ),
-      inline: false,
-    })
+    embed.addFields(
+      {
+        name: "⚙️ Objets possédés",
+        value: formatList(
+          items,
+          (item) => `**${item.label || item.itemKey}** — x${item.quantity || 0}`,
+          "Aucun objet possédé."
+        ),
+        inline: false,
+      },
+      {
+        name: "🔧 Utilisation",
+        value:
+          "Les objets d'amélioration servent avec `/ameliorer`.\n\n" +
+          "`/ameliorer voir carte:<nom>` — voir le niveau d'une carte\n" +
+          "`/ameliorer carte carte:<nom>` — améliorer une carte\n" +
+          "`/statscarte carte:<nom>` — voir les stats améliorées",
+        inline: false,
+      }
+    )
   }
 
   if (safeCategory === "cosmetiques") {
@@ -276,6 +405,14 @@ async function buildInventoryEmbed(client, user, category = "resume") {
           (cosmetic) => `**${cosmetic.label || cosmetic.cosmeticKey}**`,
           "Aucun badge possédé."
         ),
+        inline: false,
+      },
+      {
+        name: "📌 Actifs",
+        value:
+          `Titre actif : **${profile.activeTitle || "Aucun"}**\n` +
+          `Badge actif : **${profile.activeBadge || "Aucun"}**\n\n` +
+          "Utilise `/cosmetique titre` ou `/cosmetique badge` pour changer.",
         inline: false,
       }
     )

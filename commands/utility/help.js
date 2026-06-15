@@ -49,14 +49,14 @@ function buildHelpEmbed(category = "accueil") {
   if (safeCategory === "accueil") {
     embed.setDescription(
       "Bienvenue dans l'aide du bot **Arcane RP**.\n\n" +
-      "Le bot est organisé autour de plusieurs systèmes : personnages RP, relations, collection de cartes, boutique, combats, échanges et commandes admin.\n\n" +
+      "Le bot contient plusieurs systèmes : personnages RP, relations, collection de cartes, boutique, combats, améliorations, échanges et commandes admin.\n\n" +
       "Utilise les boutons ci-dessous pour naviguer entre les catégories."
     )
 
     embed.addFields(
       {
         name: "👤 Personnages",
-        value: "`/create`, `/profil`, `/editperso`, `/deleteperso`, `/image`, `/relation`",
+        value: "`/create`, `/profil`, `/editperso`, `/deleteperso`, `/image`, `/relation`, `/popularite`",
         inline: false,
       },
       {
@@ -65,8 +65,8 @@ function buildHelpEmbed(category = "accueil") {
         inline: false,
       },
       {
-        name: "🛒 Économie",
-        value: "`/boutique`, `/inventaire`, `/profilcollection`, `/cosmetique`, `/favori`",
+        name: "🛒 Économie / Profil collectionneur",
+        value: "`/boutique`, `/inventaire`, `/profilcollection`, `/cosmetique`, `/favori`, `/ameliorer`",
         inline: false,
       },
       {
@@ -128,7 +128,8 @@ function buildHelpEmbed(category = "accueil") {
         value:
           "Faire un tirage de 10 cartes.\n" +
           "Les nouvelles cartes sont ajoutées automatiquement à ta collection.\n" +
-          "Les doublons sont convertis automatiquement en fragments.",
+          "Les doublons sont convertis automatiquement en fragments.\n" +
+          "Les boosts de tirage achetés en boutique sont consommés automatiquement.",
         inline: false,
       },
       {
@@ -165,7 +166,7 @@ function buildHelpEmbed(category = "accueil") {
   }
 
   if (safeCategory === "boutique") {
-    embed.setDescription("Commandes liées aux fragments, boosts, objets et cosmétiques.")
+    embed.setDescription("Commandes liées aux fragments, boosts, objets, améliorations et cosmétiques.")
 
     embed.addFields(
       {
@@ -184,12 +185,12 @@ function buildHelpEmbed(category = "accueil") {
       },
       {
         name: "/inventaire",
-        value: "Voir tes fragments, effets actifs, objets, cosmétiques, cartes et statistiques de combat.",
+        value: "Voir tes fragments, effets actifs, objets, cosmétiques, cartes, améliorations et statistiques de combat.",
         inline: false,
       },
       {
         name: "/profilcollection",
-        value: "Voir ton profil collectionneur ou celui d’un autre joueur.",
+        value: "Voir ton profil collectionneur ou celui d’un autre joueur : collection, fragments, combats, carte favorite, meilleure carte et améliorations.",
         inline: false,
       },
       {
@@ -209,12 +210,29 @@ function buildHelpEmbed(category = "accueil") {
       },
       {
         name: "/favori carte",
-        value: "Définir une carte favorite à afficher dans ton profil collectionneur.",
+        value:
+          "Définir une carte favorite.\n" +
+          "⭐ Cette carte devient aussi ta **carte de combat par défaut** pour `/combat pve` et `/combat pvp`.",
         inline: false,
       },
       {
         name: "/favori retirer",
         value: "Retirer ta carte favorite.",
+        inline: false,
+      },
+      {
+        name: "/ameliorer voir",
+        value: "Voir le niveau d’amélioration d’une carte et le coût du prochain niveau.",
+        inline: false,
+      },
+      {
+        name: "/ameliorer carte",
+        value: "Améliorer une carte avec des objets achetés en boutique.",
+        inline: false,
+      },
+      {
+        name: "/ameliorer reset",
+        value: "Réinitialiser l’amélioration d’une carte sans remboursement.",
         inline: false,
       }
     )
@@ -226,13 +244,16 @@ function buildHelpEmbed(category = "accueil") {
     embed.addFields(
       {
         name: "/statscarte",
-        value: "Voir les statistiques de combat d’une carte : PV, attaque, défense, vitesse et puissance.",
+        value:
+          "Voir les statistiques de combat d’une carte : PV, attaque, défense, vitesse et puissance.\n" +
+          "Affiche aussi les stats de base, le niveau d’amélioration et les stats améliorées.",
         inline: false,
       },
       {
         name: "/combat pve",
         value:
-          "Combattre un ennemi généré par le bot avec une carte que tu possèdes.\n" +
+          "Combattre un ennemi généré par le bot.\n" +
+          "Si tu ne précises pas de carte, ta carte favorite est utilisée automatiquement.\n" +
           "Une victoire rapporte des fragments.\n" +
           "Une défaite peut faire perdre des fragments, sauf si tu as une protection active.",
         inline: false,
@@ -241,8 +262,16 @@ function buildHelpEmbed(category = "accueil") {
         name: "/combat pvp",
         value:
           "Défier un autre joueur en combat de cartes.\n" +
-          "Le gagnant peut voler des fragments au perdant.\n" +
-          "Les protections PVP et boucliers économiques peuvent empêcher la perte.",
+          "Si tu ne précises pas de carte, ta carte favorite est utilisée automatiquement.\n" +
+          "Le défenseur utilise sa carte favorite si elle est valide, sinon sa meilleure carte.\n" +
+          "Le gagnant peut voler des fragments au perdant.",
+        inline: false,
+      },
+      {
+        name: "/ameliorer",
+        value:
+          "Améliorer une carte augmente ses stats utilisées en combat.\n" +
+          "Niveaux disponibles : **1 à 5**.",
         inline: false,
       },
       {
@@ -276,6 +305,13 @@ function buildHelpEmbed(category = "accueil") {
         inline: false,
       },
       {
+        name: "⚙️ Améliorer ses cartes",
+        value:
+          "Achète des objets dans `/boutique categorie:Améliorations`, puis utilise `/ameliorer carte`.\n" +
+          "Les améliorations augmentent les stats utilisées dans `/combat`.",
+        inline: false,
+      },
+      {
         name: "🍀 Utiliser des boosts",
         value:
           "Les boosts achetés dans `/boutique` sont visibles dans `/inventaire`.\n" +
@@ -286,7 +322,7 @@ function buildHelpEmbed(category = "accueil") {
         name: "🎖️ Personnaliser son profil",
         value:
           "Achète des titres et badges dans `/boutique`, puis active-les avec `/cosmetique`.\n" +
-          "Choisis aussi une carte favorite avec `/favori`.",
+          "Choisis aussi une carte favorite avec `/favori`. Cette carte sert aussi de carte de combat par défaut.",
         inline: false,
       }
     )
@@ -340,15 +376,13 @@ function buildHelpEmbed(category = "accueil") {
   }
 
   embed.setFooter({
-    text: "Arcane RP — Système de personnages, cartes, boutique et combats",
+    text: "Arcane RP — Personnages, cartes, boutique, améliorations et combats",
   })
 
   return embed
 }
 
 function buildHelpButtons(activeCategory, userId) {
-  const rows = []
-
   const firstRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`help:category:accueil:${userId}`)
@@ -395,9 +429,7 @@ function buildHelpButtons(activeCategory, userId) {
       .setDisabled(activeCategory === "admin")
   )
 
-  rows.push(firstRow, secondRow)
-
-  return rows
+  return [firstRow, secondRow]
 }
 
 module.exports = {
