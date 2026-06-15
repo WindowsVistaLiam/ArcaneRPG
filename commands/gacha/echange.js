@@ -8,8 +8,7 @@ const {
 
 const { ObjectId } = require("mongodb")
 const arcaneCards = require("../../data/arcaneCards")
-
-const EXCHANGE_EXPIRES_MS = 10 * 60 * 1000
+const { progressQuest } = require("../../utils/quests")
 
 const RARITY_COLORS = {
   common: 0x95a5a6,
@@ -28,7 +27,7 @@ const RARITY_EMOJIS = {
 }
 
 function normalizeText(text) {
-  return String(text)
+  return String(text || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -57,6 +56,14 @@ function getCardFromCatalog(cardKey) {
   return arcaneCards.find((card) => card.key === cardKey)
 }
 
+function getCardDisplayName(card) {
+  if (!card) return "Carte inconnue"
+
+  const emoji = RARITY_EMOJIS[card.rarity] || "🎴"
+
+  return `${emoji} ${card.name}`
+}
+
 async function getDisplayName(client, guild, userId) {
   if (guild) {
     const member = await guild.members.fetch(userId).catch(() => null)
@@ -69,6 +76,18 @@ async function getDisplayName(client, guild, userId) {
   const user = await client.users.fetch(userId).catch(() => null)
 
   return user ? user.username : `Utilisateur ${userId}`
+}
+
+async function getOwnedCardDoc(client, userId, cardKey) {
+  return client.db.collection("player_cards").findOne({
+    userId,
+    cardKey,
+  })
+}
+
+async function userOwnsCard(client, userId, cardKey) {
+  const card = await getOwnedCardDoc(client, userId, cardKey)
+  return Boolean(card)
 }
 
 async function getWalletFragments(client, userId) {
@@ -91,10 +110,10 @@ async function addFragments(client, userId, amount) {
         fragments: amount,
       },
       $set: {
+        userId,
         updatedAt: new Date(),
       },
       $setOnInsert: {
-        userId,
         createdAt: new Date(),
       },
     },
@@ -104,10 +123,19 @@ async function addFragments(client, userId, amount) {
   )
 }
 
-async function removeFragments(client, userId, amount) {
-  const currentFragments = await getWalletFragments(client, userId)
-  const removed = Math.min(currentFragments, amount)
-  const newFragments = Math.max(0, currentFragments - removed)
+async function spendFragments(client, userId, amount) {
+  const before = await getWalletFragments(client, userId)
+
+  if (before < amount) {
+    return {
+      success: false,
+      before,
+      after: before,
+      spent: 0,
+    }
+  }
+
+  const after = before - amount
 
   await client.db.collection("player_wallets").updateOne(
     {
@@ -116,7 +144,7 @@ async function removeFragments(client, userId, amount) {
     {
       $set: {
         userId,
-        fragments: newFragments,
+        fragments: after,
         updatedAt: new Date(),
       },
       $setOnInsert: {
@@ -129,19 +157,137 @@ async function removeFragments(client, userId, amount) {
   )
 
   return {
-    before: currentFragments,
-    after: newFragments,
-    removed,
+    success: true,
+    before,
+    after,
+    spent: amount,
   }
 }
 
-async function userOwnsCard(client, userId, cardKey) {
-  const card = await client.db.collection("player_cards").findOne({
-    userId,
+function sanitizePlayerCardDoc(cardDoc, newUserId, source = "exchange") {
+  const cloned = {
+    ...cardDoc,
+    userId: newUserId,
+    source,
+    exchangedAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  delete cloned._id
+
+  return cloned
+}
+
+async function moveCard(client, fromUserId, toUserId, cardKey) {
+  const cardsCollection = client.db.collection("player_cards")
+
+  const cardDoc = await cardsCollection.findOne({
+    userId: fromUserId,
     cardKey,
   })
 
-  return Boolean(card)
+  if (!cardDoc) {
+    return {
+      success: false,
+      message: "Carte introuvable au moment du transfert.",
+    }
+  }
+
+  const receiverAlreadyOwns = await cardsCollection.findOne({
+    userId: toUserId,
+    cardKey,
+  })
+
+  if (receiverAlreadyOwns) {
+    return {
+      success: false,
+      message: "Le destinataire possède déjà cette carte.",
+    }
+  }
+
+  await cardsCollection.deleteOne({
+    _id: cardDoc._id,
+  })
+
+  await cardsCollection.insertOne(
+    sanitizePlayerCardDoc(cardDoc, toUserId)
+  )
+
+  return {
+    success: true,
+  }
+}
+
+async function swapCards(client, fromUserId, toUserId, offeredCardKey, requestedCardKey) {
+  const cardsCollection = client.db.collection("player_cards")
+
+  const offeredDoc = await cardsCollection.findOne({
+    userId: fromUserId,
+    cardKey: offeredCardKey,
+  })
+
+  const requestedDoc = await cardsCollection.findOne({
+    userId: toUserId,
+    cardKey: requestedCardKey,
+  })
+
+  if (!offeredDoc) {
+    return {
+      success: false,
+      message: "❌ Le joueur qui propose ne possède plus la carte offerte.",
+    }
+  }
+
+  if (!requestedDoc) {
+    return {
+      success: false,
+      message: "❌ Le joueur défié ne possède plus la carte demandée.",
+    }
+  }
+
+  const fromAlreadyOwnsRequested = await cardsCollection.findOne({
+    userId: fromUserId,
+    cardKey: requestedCardKey,
+  })
+
+  if (fromAlreadyOwnsRequested) {
+    return {
+      success: false,
+      message: "❌ Le joueur qui propose possède déjà la carte qu'il veut recevoir.",
+    }
+  }
+
+  const toAlreadyOwnsOffered = await cardsCollection.findOne({
+    userId: toUserId,
+    cardKey: offeredCardKey,
+  })
+
+  if (toAlreadyOwnsOffered) {
+    return {
+      success: false,
+      message: "❌ Le joueur qui accepte possède déjà la carte qu'il doit recevoir.",
+    }
+  }
+
+  await cardsCollection.deleteOne({
+    _id: offeredDoc._id,
+  })
+
+  await cardsCollection.deleteOne({
+    _id: requestedDoc._id,
+  })
+
+  await cardsCollection.insertOne(
+    sanitizePlayerCardDoc(offeredDoc, toUserId)
+  )
+
+  await cardsCollection.insertOne(
+    sanitizePlayerCardDoc(requestedDoc, fromUserId)
+  )
+
+  return {
+    success: true,
+  }
 }
 
 function buildExchangeButtons(sessionId) {
@@ -158,49 +304,43 @@ function buildExchangeButtons(sessionId) {
   return new ActionRowBuilder().addComponents(acceptButton, refuseButton)
 }
 
-async function buildCardForCardEmbed({
-  client,
-  guild,
-  proposerId,
-  targetId,
+function buildCardForCardEmbed({
+  interaction,
+  targetUser,
   offeredCard,
   requestedCard,
+  expiresAt,
 }) {
-  const proposerName = await getDisplayName(client, guild, proposerId)
-  const targetName = await getDisplayName(client, guild, targetId)
-
-  const offeredEmoji = RARITY_EMOJIS[offeredCard.rarity] || "🎴"
-  const requestedEmoji = RARITY_EMOJIS[requestedCard.rarity] || "🎴"
-
   const embed = new EmbedBuilder()
-    .setTitle("🔁 Proposition d'échange")
+    .setTitle("🤝 Proposition d'échange")
     .setColor(RARITY_COLORS[offeredCard.rarity] || 0x5865f2)
     .setDescription(
-      `**${proposerName}** propose un échange à **${targetName}**.`
+      `${interaction.user} propose un échange à ${targetUser}.\n\n` +
+      `⏳ Expire : <t:${Math.floor(expiresAt.getTime() / 1000)}:R>`
     )
     .addFields(
       {
-        name: `${offeredEmoji} Carte proposée`,
+        name: "Carte offerte",
         value:
-          `**${offeredCard.name}**\n` +
-          `ID : \`${offeredCard.key}\`\n` +
+          `${getCardDisplayName(offeredCard)}\n` +
           `Rareté : **${offeredCard.rarityLabel || offeredCard.rarity}**\n` +
-          `Valeur : **${offeredCard.value || 0} pts**`,
+          `ID : \`${offeredCard.key}\``,
         inline: true,
       },
       {
-        name: `${requestedEmoji} Carte demandée`,
+        name: "Carte demandée",
         value:
-          `**${requestedCard.name}**\n` +
-          `ID : \`${requestedCard.key}\`\n` +
+          `${getCardDisplayName(requestedCard)}\n` +
           `Rareté : **${requestedCard.rarityLabel || requestedCard.rarity}**\n` +
-          `Valeur : **${requestedCard.value || 0} pts**`,
+          `ID : \`${requestedCard.key}\``,
         inline: true,
+      },
+      {
+        name: "Validation",
+        value: `${targetUser} doit accepter ou refuser avec les boutons ci-dessous.`,
+        inline: false,
       }
     )
-    .setFooter({
-      text: "L'échange expire dans 10 minutes.",
-    })
     .setTimestamp()
 
   if (offeredCard.image) {
@@ -210,247 +350,107 @@ async function buildCardForCardEmbed({
   return embed
 }
 
-async function buildCardForFragmentsEmbed({
-  client,
-  guild,
-  proposerId,
-  targetId,
-  offeredCard,
-  priceFragments,
+function buildCardForFragmentsEmbed({
+  interaction,
+  buyerUser,
+  card,
+  price,
+  expiresAt,
 }) {
-  const proposerName = await getDisplayName(client, guild, proposerId)
-  const targetName = await getDisplayName(client, guild, targetId)
-
-  const emoji = RARITY_EMOJIS[offeredCard.rarity] || "🎴"
-
   const embed = new EmbedBuilder()
-    .setTitle("💠 Proposition de vente")
-    .setColor(RARITY_COLORS[offeredCard.rarity] || 0x5865f2)
+    .setTitle("💠 Vente de carte")
+    .setColor(RARITY_COLORS[card.rarity] || 0x5865f2)
     .setDescription(
-      `**${proposerName}** propose de vendre une carte à **${targetName}**.`
+      `${interaction.user} propose de vendre une carte à ${buyerUser}.\n\n` +
+      `Prix : 💠 **${price}** fragment${price > 1 ? "s" : ""}\n` +
+      `⏳ Expire : <t:${Math.floor(expiresAt.getTime() / 1000)}:R>`
     )
     .addFields(
       {
-        name: `${emoji} Carte proposée`,
+        name: "Carte proposée",
         value:
-          `**${offeredCard.name}**\n` +
-          `ID : \`${offeredCard.key}\`\n` +
-          `Rareté : **${offeredCard.rarityLabel || offeredCard.rarity}**\n` +
-          `Valeur : **${offeredCard.value || 0} pts**`,
+          `${getCardDisplayName(card)}\n` +
+          `Rareté : **${card.rarityLabel || card.rarity}**\n` +
+          `ID : \`${card.key}\``,
         inline: false,
       },
       {
-        name: "Prix demandé",
-        value: `💠 **${priceFragments}** fragment${priceFragments > 1 ? "s" : ""}`,
-        inline: true,
+        name: "Validation",
+        value: `${buyerUser} doit accepter ou refuser avec les boutons ci-dessous.`,
+        inline: false,
       }
     )
-    .setFooter({
-      text: "La proposition expire dans 10 minutes.",
-    })
     .setTimestamp()
 
-  if (offeredCard.image) {
-    embed.setThumbnail(offeredCard.image)
+  if (card.image) {
+    embed.setThumbnail(card.image)
   }
 
   return embed
 }
 
-async function completeCardForCardExchange(client, session) {
-  const cardsCollection = client.db.collection("player_cards")
+async function buildCardExchangeSuccessEmbed(client, guild, session) {
+  const fromName = await getDisplayName(client, guild, session.fromUserId)
+  const toName = await getDisplayName(client, guild, session.toUserId)
 
   const offeredCard = getCardFromCatalog(session.offeredCardKey)
   const requestedCard = getCardFromCatalog(session.requestedCardKey)
 
-  if (!offeredCard || !requestedCard) {
-    return {
-      success: false,
-      message: "❌ Une des cartes de l'échange n'existe plus dans le catalogue.",
-    }
-  }
-
-  const proposerOwnsOffered = await userOwnsCard(
-    client,
-    session.proposerId,
-    offeredCard.key
-  )
-
-  const targetOwnsRequested = await userOwnsCard(
-    client,
-    session.targetId,
-    requestedCard.key
-  )
-
-  if (!proposerOwnsOffered) {
-    return {
-      success: false,
-      message: `❌ Le joueur qui a proposé l'échange ne possède plus **${offeredCard.name}**.`,
-    }
-  }
-
-  if (!targetOwnsRequested) {
-    return {
-      success: false,
-      message: `❌ Le joueur ciblé ne possède plus **${requestedCard.name}**.`,
-    }
-  }
-
-  const proposerAlreadyOwnsRequested = await userOwnsCard(
-    client,
-    session.proposerId,
-    requestedCard.key
-  )
-
-  const targetAlreadyOwnsOffered = await userOwnsCard(
-    client,
-    session.targetId,
-    offeredCard.key
-  )
-
-  if (proposerAlreadyOwnsRequested) {
-    return {
-      success: false,
-      message: `❌ Échange annulé : le proposant possède déjà **${requestedCard.name}**.`,
-    }
-  }
-
-  if (targetAlreadyOwnsOffered) {
-    return {
-      success: false,
-      message: `❌ Échange annulé : le joueur ciblé possède déjà **${offeredCard.name}**.`,
-    }
-  }
-
-  await cardsCollection.updateOne(
-    {
-      userId: session.proposerId,
-      cardKey: offeredCard.key,
-    },
-    {
-      $set: {
-        userId: session.targetId,
-        exchangedAt: new Date(),
-        exchangeSessionId: session._id.toString(),
-        updatedAt: new Date(),
+  return new EmbedBuilder()
+    .setTitle("✅ Échange terminé")
+    .setColor(0x2ecc71)
+    .setDescription("Les cartes ont été échangées avec succès.")
+    .addFields(
+      {
+        name: fromName,
+        value:
+          `Reçoit : ${getCardDisplayName(requestedCard)}\n` +
+          `ID : \`${requestedCard?.key || session.requestedCardKey}\``,
+        inline: true,
       },
-    }
-  )
-
-  await cardsCollection.updateOne(
-    {
-      userId: session.targetId,
-      cardKey: requestedCard.key,
-    },
-    {
-      $set: {
-        userId: session.proposerId,
-        exchangedAt: new Date(),
-        exchangeSessionId: session._id.toString(),
-        updatedAt: new Date(),
-      },
-    }
-  )
-
-  return {
-    success: true,
-    offeredCard,
-    requestedCard,
-  }
+      {
+        name: toName,
+        value:
+          `Reçoit : ${getCardDisplayName(offeredCard)}\n` +
+          `ID : \`${offeredCard?.key || session.offeredCardKey}\``,
+        inline: true,
+      }
+    )
+    .setTimestamp()
 }
 
-async function completeCardForFragmentsExchange(client, session) {
-  const cardsCollection = client.db.collection("player_cards")
+async function buildFragmentsExchangeSuccessEmbed(client, guild, session, payment) {
+  const sellerName = await getDisplayName(client, guild, session.sellerId)
+  const buyerName = await getDisplayName(client, guild, session.buyerId)
+  const card = getCardFromCatalog(session.cardKey)
 
-  const offeredCard = getCardFromCatalog(session.offeredCardKey)
-
-  if (!offeredCard) {
-    return {
-      success: false,
-      message: "❌ La carte proposée n'existe plus dans le catalogue.",
-    }
-  }
-
-  const proposerOwnsOffered = await userOwnsCard(
-    client,
-    session.proposerId,
-    offeredCard.key
-  )
-
-  if (!proposerOwnsOffered) {
-    return {
-      success: false,
-      message: `❌ Le vendeur ne possède plus **${offeredCard.name}**.`,
-    }
-  }
-
-  const targetAlreadyOwnsOffered = await userOwnsCard(
-    client,
-    session.targetId,
-    offeredCard.key
-  )
-
-  if (targetAlreadyOwnsOffered) {
-    return {
-      success: false,
-      message: `❌ L'acheteur possède déjà **${offeredCard.name}**.`,
-    }
-  }
-
-  const buyerFragments = await getWalletFragments(client, session.targetId)
-
-  if (buyerFragments < session.priceFragments) {
-    return {
-      success: false,
-      message:
-        `❌ L'acheteur n'a pas assez de fragments.\n` +
-        `Prix : **${session.priceFragments}**\n` +
-        `Fragments disponibles : **${buyerFragments}**`,
-    }
-  }
-
-  const removed = await removeFragments(
-    client,
-    session.targetId,
-    session.priceFragments
-  )
-
-  if (removed.removed < session.priceFragments) {
-    return {
-      success: false,
-      message: "❌ Paiement impossible. L'échange a été annulé.",
-    }
-  }
-
-  await addFragments(client, session.proposerId, session.priceFragments)
-
-  await cardsCollection.updateOne(
-    {
-      userId: session.proposerId,
-      cardKey: offeredCard.key,
-    },
-    {
-      $set: {
-        userId: session.targetId,
-        exchangedAt: new Date(),
-        exchangeSessionId: session._id.toString(),
-        soldForFragments: session.priceFragments,
-        updatedAt: new Date(),
+  return new EmbedBuilder()
+    .setTitle("✅ Vente terminée")
+    .setColor(0x2ecc71)
+    .setDescription("La carte a été vendue avec succès.")
+    .addFields(
+      {
+        name: "Vendeur",
+        value:
+          `**${sellerName}** reçoit 💠 **${session.price}** fragment${session.price > 1 ? "s" : ""}.`,
+        inline: false,
       },
-    }
-  )
-
-  return {
-    success: true,
-    offeredCard,
-    priceFragments: session.priceFragments,
-  }
+      {
+        name: "Acheteur",
+        value:
+          `**${buyerName}** reçoit ${getCardDisplayName(card)}.\n` +
+          `Fragments avant : **${payment.before}**\n` +
+          `Fragments après : **${payment.after}**`,
+        inline: false,
+      }
+    )
+    .setTimestamp()
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("echange")
-    .setDescription("Échanger des cartes avec un autre joueur")
+    .setDescription("Échanger des cartes ou vendre une carte contre des fragments")
 
     .addSubcommand((subcommand) =>
       subcommand
@@ -465,7 +465,7 @@ module.exports = {
         .addStringOption((option) =>
           option
             .setName("ma-carte")
-            .setDescription("Nom ou ID de la carte que tu proposes")
+            .setDescription("Nom ou ID de la carte que tu offres")
             .setRequired(true)
         )
         .addStringOption((option) =>
@@ -479,17 +479,17 @@ module.exports = {
     .addSubcommand((subcommand) =>
       subcommand
         .setName("fragments")
-        .setDescription("Proposer une carte contre des fragments")
+        .setDescription("Vendre une carte à un joueur contre des fragments")
         .addUserOption((option) =>
           option
             .setName("joueur")
-            .setDescription("Joueur à qui tu proposes la carte")
+            .setDescription("Joueur qui peut acheter ta carte")
             .setRequired(true)
         )
         .addStringOption((option) =>
           option
             .setName("carte")
-            .setDescription("Nom ou ID de la carte que tu proposes")
+            .setDescription("Nom ou ID de la carte que tu vends")
             .setRequired(true)
         )
         .addIntegerOption((option) =>
@@ -498,22 +498,21 @@ module.exports = {
             .setDescription("Prix en fragments")
             .setRequired(true)
             .setMinValue(1)
-            .setMaxValue(100000)
         )
     ),
 
   async execute(interaction, client) {
     const subcommand = interaction.options.getSubcommand()
-    const target = interaction.options.getUser("joueur")
+    const targetUser = interaction.options.getUser("joueur")
 
-    if (target.bot) {
+    if (targetUser.bot) {
       return interaction.reply({
-        content: "❌ Tu ne peux pas faire d'échange avec un bot.",
+        content: "❌ Tu ne peux pas échanger avec un bot.",
         ephemeral: true,
       })
     }
 
-    if (target.id === interaction.user.id) {
+    if (targetUser.id === interaction.user.id) {
       return interaction.reply({
         content: "❌ Tu ne peux pas faire un échange avec toi-même.",
         ephemeral: true,
@@ -521,197 +520,187 @@ module.exports = {
     }
 
     if (subcommand === "carte") {
-      const offeredSearch = interaction.options.getString("ma-carte")
-      const requestedSearch = interaction.options.getString("sa-carte")
+      const myCardSearch = interaction.options.getString("ma-carte")
+      const targetCardSearch = interaction.options.getString("sa-carte")
 
-      const offeredCard = findCard(offeredSearch)
-      const requestedCard = findCard(requestedSearch)
+      const offeredCard = findCard(myCardSearch)
+      const requestedCard = findCard(targetCardSearch)
 
       if (!offeredCard) {
         return interaction.reply({
-          content: `❌ Aucune carte trouvée pour ta carte : **${offeredSearch}**.`,
+          content: `❌ Aucune carte trouvée pour ta carte : **${myCardSearch}**.`,
           ephemeral: true,
         })
       }
 
       if (!requestedCard) {
         return interaction.reply({
-          content: `❌ Aucune carte trouvée pour la carte demandée : **${requestedSearch}**.`,
+          content: `❌ Aucune carte trouvée pour la carte demandée : **${targetCardSearch}**.`,
           ephemeral: true,
         })
       }
 
       if (offeredCard.key === requestedCard.key) {
         return interaction.reply({
-          content: "❌ Tu ne peux pas échanger une carte contre la même carte.",
+          content: "❌ Tu ne peux pas échanger une carte contre elle-même.",
           ephemeral: true,
         })
       }
 
-      const proposerOwnsOffered = await userOwnsCard(
+      const ownsOfferedCard = await userOwnsCard(
         client,
         interaction.user.id,
         offeredCard.key
       )
 
-      if (!proposerOwnsOffered) {
+      if (!ownsOfferedCard) {
         return interaction.reply({
-          content: `❌ Tu ne possèdes pas **${offeredCard.name}**.`,
+          content: `❌ Tu ne possèdes pas cette carte : **${offeredCard.name}**.`,
           ephemeral: true,
         })
       }
 
-      const targetOwnsRequested = await userOwnsCard(
+      const targetOwnsRequestedCard = await userOwnsCard(
         client,
-        target.id,
+        targetUser.id,
         requestedCard.key
       )
 
-      if (!targetOwnsRequested) {
+      if (!targetOwnsRequestedCard) {
         return interaction.reply({
-          content: `❌ ${target} ne possède pas **${requestedCard.name}**.`,
+          content: `❌ ${targetUser} ne possède pas cette carte : **${requestedCard.name}**.`,
           ephemeral: true,
         })
       }
 
-      const proposerAlreadyOwnsRequested = await userOwnsCard(
+      const fromAlreadyOwnsRequested = await userOwnsCard(
         client,
         interaction.user.id,
         requestedCard.key
       )
 
-      if (proposerAlreadyOwnsRequested) {
+      if (fromAlreadyOwnsRequested) {
         return interaction.reply({
-          content: `❌ Tu possèdes déjà **${requestedCard.name}**.`,
+          content: `❌ Tu possèdes déjà la carte que tu demandes : **${requestedCard.name}**.`,
           ephemeral: true,
         })
       }
 
-      const targetAlreadyOwnsOffered = await userOwnsCard(
+      const toAlreadyOwnsOffered = await userOwnsCard(
         client,
-        target.id,
+        targetUser.id,
         offeredCard.key
       )
 
-      if (targetAlreadyOwnsOffered) {
+      if (toAlreadyOwnsOffered) {
         return interaction.reply({
-          content: `❌ ${target} possède déjà **${offeredCard.name}**.`,
+          content: `❌ ${targetUser} possède déjà la carte que tu offres : **${offeredCard.name}**.`,
           ephemeral: true,
         })
       }
+
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
       const session = {
         type: "card_for_card",
-        proposerId: interaction.user.id,
-        targetId: target.id,
+        fromUserId: interaction.user.id,
+        toUserId: targetUser.id,
         offeredCardKey: offeredCard.key,
         requestedCardKey: requestedCard.key,
         status: "pending",
         guildId: interaction.guildId,
         channelId: interaction.channelId,
         createdAt: new Date(),
-        expiresAt: new Date(Date.now() + EXCHANGE_EXPIRES_MS),
+        expiresAt,
       }
 
       const result = await client.db.collection("exchange_sessions").insertOne(session)
 
-      const embed = await buildCardForCardEmbed({
-        client,
-        guild: interaction.guild,
-        proposerId: interaction.user.id,
-        targetId: target.id,
+      const embed = buildCardForCardEmbed({
+        interaction,
+        targetUser,
         offeredCard,
         requestedCard,
+        expiresAt,
       })
 
       const row = buildExchangeButtons(result.insertedId.toString())
 
       return interaction.reply({
-        content: `${target}, tu as reçu une proposition d'échange.`,
+        content: `${targetUser}, tu as reçu une proposition d'échange.`,
         embeds: [embed],
         components: [row],
       })
     }
 
     if (subcommand === "fragments") {
-      const offeredSearch = interaction.options.getString("carte")
-      const priceFragments = interaction.options.getInteger("prix")
+      const cardSearch = interaction.options.getString("carte")
+      const price = interaction.options.getInteger("prix")
 
-      const offeredCard = findCard(offeredSearch)
+      const card = findCard(cardSearch)
 
-      if (!offeredCard) {
+      if (!card) {
         return interaction.reply({
-          content: `❌ Aucune carte trouvée pour : **${offeredSearch}**.`,
+          content: `❌ Aucune carte trouvée pour : **${cardSearch}**.`,
           ephemeral: true,
         })
       }
 
-      const proposerOwnsOffered = await userOwnsCard(
+      const sellerOwnsCard = await userOwnsCard(
         client,
         interaction.user.id,
-        offeredCard.key
+        card.key
       )
 
-      if (!proposerOwnsOffered) {
+      if (!sellerOwnsCard) {
         return interaction.reply({
-          content: `❌ Tu ne possèdes pas **${offeredCard.name}**.`,
+          content: `❌ Tu ne possèdes pas cette carte : **${card.name}**.`,
           ephemeral: true,
         })
       }
 
-      const targetAlreadyOwnsOffered = await userOwnsCard(
+      const buyerAlreadyOwnsCard = await userOwnsCard(
         client,
-        target.id,
-        offeredCard.key
+        targetUser.id,
+        card.key
       )
 
-      if (targetAlreadyOwnsOffered) {
+      if (buyerAlreadyOwnsCard) {
         return interaction.reply({
-          content: `❌ ${target} possède déjà **${offeredCard.name}**.`,
+          content: `❌ ${targetUser} possède déjà cette carte : **${card.name}**.`,
           ephemeral: true,
         })
       }
 
-      const targetFragments = await getWalletFragments(client, target.id)
-
-      if (targetFragments < priceFragments) {
-        return interaction.reply({
-          content:
-            `❌ ${target} n'a pas assez de fragments pour cette proposition.\n` +
-            `Prix : **${priceFragments}**\n` +
-            `Fragments disponibles : **${targetFragments}**`,
-          ephemeral: true,
-        })
-      }
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
       const session = {
         type: "card_for_fragments",
-        proposerId: interaction.user.id,
-        targetId: target.id,
-        offeredCardKey: offeredCard.key,
-        priceFragments,
+        sellerId: interaction.user.id,
+        buyerId: targetUser.id,
+        cardKey: card.key,
+        price,
         status: "pending",
         guildId: interaction.guildId,
         channelId: interaction.channelId,
         createdAt: new Date(),
-        expiresAt: new Date(Date.now() + EXCHANGE_EXPIRES_MS),
+        expiresAt,
       }
 
       const result = await client.db.collection("exchange_sessions").insertOne(session)
 
-      const embed = await buildCardForFragmentsEmbed({
-        client,
-        guild: interaction.guild,
-        proposerId: interaction.user.id,
-        targetId: target.id,
-        offeredCard,
-        priceFragments,
+      const embed = buildCardForFragmentsEmbed({
+        interaction,
+        buyerUser: targetUser,
+        card,
+        price,
+        expiresAt,
       })
 
       const row = buildExchangeButtons(result.insertedId.toString())
 
       return interaction.reply({
-        content: `${target}, tu as reçu une proposition d'achat de carte.`,
+        content: `${targetUser}, tu as reçu une proposition d'achat.`,
         embeds: [embed],
         components: [row],
       })
@@ -727,7 +716,7 @@ module.exports = {
 
     if (!ObjectId.isValid(sessionId)) {
       return interaction.reply({
-        content: "❌ Proposition d'échange invalide.",
+        content: "❌ Session d'échange invalide.",
         ephemeral: true,
       })
     }
@@ -740,21 +729,25 @@ module.exports = {
 
     if (!session) {
       return interaction.reply({
-        content: "❌ Cette proposition d'échange n'existe plus.",
+        content: "❌ Cet échange n'existe plus.",
         ephemeral: true,
       })
     }
 
     if (session.status !== "pending") {
       return interaction.reply({
-        content: "❌ Cette proposition d'échange a déjà été traitée.",
+        content: "❌ Cet échange a déjà été traité.",
         ephemeral: true,
       })
     }
 
-    if (interaction.user.id !== session.targetId) {
+    const targetUserId = session.type === "card_for_card"
+      ? session.toUserId
+      : session.buyerId
+
+    if (interaction.user.id !== targetUserId) {
       return interaction.reply({
-        content: "❌ Seul le joueur ciblé peut accepter ou refuser cet échange.",
+        content: "❌ Seul le joueur concerné peut répondre à cette proposition.",
         ephemeral: true,
       })
     }
@@ -793,88 +786,64 @@ module.exports = {
       )
 
       return interaction.update({
-        content: "❌ La proposition d'échange a été refusée.",
+        content: "❌ Proposition d'échange refusée.",
         embeds: [],
         components: [],
       })
     }
 
     if (action === "accept") {
-      let result = null
-
       if (session.type === "card_for_card") {
-        result = await completeCardForCardExchange(client, session)
-      }
+        const swapResult = await swapCards(
+          client,
+          session.fromUserId,
+          session.toUserId,
+          session.offeredCardKey,
+          session.requestedCardKey
+        )
 
-      if (session.type === "card_for_fragments") {
-        result = await completeCardForFragmentsExchange(client, session)
-      }
+        if (!swapResult.success) {
+          await sessions.updateOne(
+            {
+              _id: new ObjectId(sessionId),
+            },
+            {
+              $set: {
+                status: "cancelled",
+                cancelReason: swapResult.message,
+                updatedAt: new Date(),
+              },
+            }
+          )
 
-      if (!result || !result.success) {
+          return interaction.update({
+            content: swapResult.message,
+            embeds: [],
+            components: [],
+          })
+        }
+
+        await progressQuest(client, session.fromUserId, "exchange").catch(console.error)
+        await progressQuest(client, session.toUserId, "exchange").catch(console.error)
+
         await sessions.updateOne(
           {
             _id: new ObjectId(sessionId),
           },
           {
             $set: {
-              status: "cancelled",
+              status: "completed",
+              completedAt: new Date(),
               updatedAt: new Date(),
             },
           }
         )
 
-        return interaction.update({
-          content: result?.message || "❌ L'échange a été annulé.",
-          embeds: [],
-          components: [],
-        })
-      }
-
-      await sessions.updateOne(
-        {
-          _id: new ObjectId(sessionId),
-        },
-        {
-          $set: {
-            status: "completed",
-            completedAt: new Date(),
-            updatedAt: new Date(),
-          },
-        }
-      )
-
-      const proposerName = await getDisplayName(
-        client,
-        interaction.guild,
-        session.proposerId
-      )
-
-      const targetName = await getDisplayName(
-        client,
-        interaction.guild,
-        session.targetId
-      )
-
-      if (session.type === "card_for_card") {
-        const embed = new EmbedBuilder()
-          .setTitle("✅ Échange terminé")
-          .setColor(0x2ecc71)
-          .setDescription(
-            `**${proposerName}** et **${targetName}** ont échangé leurs cartes.`
-          )
-          .addFields(
-            {
-              name: proposerName,
-              value: `Reçoit : **${result.requestedCard.name}**`,
-              inline: true,
-            },
-            {
-              name: targetName,
-              value: `Reçoit : **${result.offeredCard.name}**`,
-              inline: true,
-            }
-          )
-          .setTimestamp()
+        const embed = await buildCardExchangeSuccessEmbed(
+          client,
+          interaction.guild,
+          session
+        )
 
         return interaction.update({
           content: "✅ Échange accepté.",
@@ -884,29 +853,130 @@ module.exports = {
       }
 
       if (session.type === "card_for_fragments") {
-        const embed = new EmbedBuilder()
-          .setTitle("✅ Vente terminée")
-          .setColor(0x2ecc71)
-          .setDescription(
-            `**${targetName}** a acheté une carte à **${proposerName}**.`
-          )
-          .addFields(
+        const sellerOwnsCard = await userOwnsCard(
+          client,
+          session.sellerId,
+          session.cardKey
+        )
+
+        if (!sellerOwnsCard) {
+          await sessions.updateOne(
             {
-              name: "Carte vendue",
-              value: `**${result.offeredCard.name}**`,
-              inline: true,
+              _id: new ObjectId(sessionId),
             },
             {
-              name: "Prix",
-              value: `💠 **${result.priceFragments}** fragment${result.priceFragments > 1 ? "s" : ""}`,
-              inline: true,
+              $set: {
+                status: "cancelled",
+                cancelReason: "seller_missing_card",
+                updatedAt: new Date(),
+              },
             }
           )
-          .setTimestamp()
 
-        if (result.offeredCard.image) {
-          embed.setThumbnail(result.offeredCard.image)
+          return interaction.update({
+            content: "❌ Le vendeur ne possède plus cette carte. Vente annulée.",
+            embeds: [],
+            components: [],
+          })
         }
+
+        const buyerAlreadyOwnsCard = await userOwnsCard(
+          client,
+          session.buyerId,
+          session.cardKey
+        )
+
+        if (buyerAlreadyOwnsCard) {
+          await sessions.updateOne(
+            {
+              _id: new ObjectId(sessionId),
+            },
+            {
+              $set: {
+                status: "cancelled",
+                cancelReason: "buyer_already_owns_card",
+                updatedAt: new Date(),
+              },
+            }
+          )
+
+          return interaction.update({
+            content: "❌ L'acheteur possède déjà cette carte. Vente annulée.",
+            embeds: [],
+            components: [],
+          })
+        }
+
+        const payment = await spendFragments(
+          client,
+          session.buyerId,
+          session.price
+        )
+
+        if (!payment.success) {
+          return interaction.reply({
+            content:
+              `❌ Tu n'as pas assez de fragments pour accepter cette vente.\n` +
+              `Prix : **${session.price}**\n` +
+              `Tes fragments : **${payment.before}**`,
+            ephemeral: true,
+          })
+        }
+
+        const moveResult = await moveCard(
+          client,
+          session.sellerId,
+          session.buyerId,
+          session.cardKey
+        )
+
+        if (!moveResult.success) {
+          await addFragments(client, session.buyerId, session.price)
+
+          await sessions.updateOne(
+            {
+              _id: new ObjectId(sessionId),
+            },
+            {
+              $set: {
+                status: "cancelled",
+                cancelReason: moveResult.message,
+                updatedAt: new Date(),
+              },
+            }
+          )
+
+          return interaction.update({
+            content: `❌ ${moveResult.message} Les fragments ont été remboursés.`,
+            embeds: [],
+            components: [],
+          })
+        }
+
+        await addFragments(client, session.sellerId, session.price)
+
+        await progressQuest(client, session.sellerId, "exchange").catch(console.error)
+        await progressQuest(client, session.buyerId, "exchange").catch(console.error)
+
+        await sessions.updateOne(
+          {
+            _id: new ObjectId(sessionId),
+          },
+          {
+            $set: {
+              status: "completed",
+              completedAt: new Date(),
+              updatedAt: new Date(),
+            },
+          }
+        )
+
+        const embed = await buildFragmentsExchangeSuccessEmbed(
+          client,
+          interaction.guild,
+          session,
+          payment
+        )
 
         return interaction.update({
           content: "✅ Vente acceptée.",

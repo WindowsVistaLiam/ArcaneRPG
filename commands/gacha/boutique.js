@@ -7,6 +7,7 @@ const {
 } = require("discord.js")
 
 const arcaneCards = require("../../data/arcaneCards")
+const { progressQuest } = require("../../utils/quests")
 
 const RARITY_WEIGHTS = {
   common: 800,
@@ -1262,6 +1263,7 @@ module.exports = {
       await interaction.deferUpdate()
 
       const result = await executePurchase(client, interaction.user.id, value)
+      await progressQuest(client, interaction.user.id, "boutique_buy").catch(console.error)
 
       if (!result.success) {
         return interaction.followUp({

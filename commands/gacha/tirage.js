@@ -8,6 +8,7 @@ const {
 
 const { ObjectId } = require("mongodb")
 const arcaneCards = require("../../data/arcaneCards")
+const { progressQuest } = require("../../utils/quests")
 
 const TIRAGE_COOLDOWN_MS = 60 * 60 * 1000
 
@@ -495,6 +496,7 @@ module.exports = {
     const result = await client.db.collection("tirage_sessions").insertOne(session)
 
     await setTirageCooldown(client, interaction.user.id)
+    await progressQuest(client, interaction.user.id, "tirage").catch(console.error)
 
     const savedSession = {
       ...session,

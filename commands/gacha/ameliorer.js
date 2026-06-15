@@ -5,6 +5,7 @@ const {
 
 const arcaneCards = require("../../data/arcaneCards")
 const { getCardStats } = require("../../utils/cardBattle")
+const { progressQuest } = require("../../utils/quests")
 
 const MAX_LEVEL = 5
 
@@ -383,7 +384,7 @@ function buildViewEmbed(user, card, upgrade, itemsMap) {
       }
     )
     .setFooter({
-      text: "Les bonus seront appliqués aux combats après le branchement de cardBattle.js.",
+      text: "Les bonus sont utilisés dans les combats PVE/PVP.",
     })
     .setTimestamp()
 
@@ -659,6 +660,8 @@ module.exports = {
           ephemeral: true,
         })
       }
+
+      await progressQuest(client, interaction.user.id, "improve_card").catch(console.error)
 
       const embed = buildSuccessEmbed(
         interaction.user,

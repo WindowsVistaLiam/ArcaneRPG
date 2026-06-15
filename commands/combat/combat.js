@@ -25,6 +25,8 @@ const {
   updateCombatStats,
 } = require("../../utils/cardBattle")
 
+const { progressQuest } = require("../../utils/quests")
+
 const PVE_COOLDOWN_MS = 30 * 60 * 1000
 
 const RARITY_COLORS = {
@@ -811,6 +813,12 @@ module.exports = {
 
       await setPveCooldown(client, interaction.user.id)
 
+      await progressQuest(client, interaction.user.id, "pve_play").catch(console.error)
+
+      if (hasWon) {
+        await progressQuest(client, interaction.user.id, "pve_win").catch(console.error)
+      }
+
       const embed = buildPveEmbed({
         interaction,
         playerCard,
@@ -961,6 +969,13 @@ module.exports = {
       })
     }
 
+    if (interaction.user.id !== session.opponentId) {
+      return interaction.reply({
+        content: "❌ Seul le joueur défié peut répondre à ce combat.",
+        ephemeral: true,
+      })
+    }
+
     if (session.expiresAt && new Date(session.expiresAt).getTime() < Date.now()) {
       await sessions.updateOne(
         {
@@ -978,13 +993,6 @@ module.exports = {
         content: "⏳ Ce défi PVP a expiré.",
         embeds: [],
         components: [],
-      })
-    }
-
-    if (interaction.user.id !== session.opponentId) {
-      return interaction.reply({
-        content: "❌ Seul le joueur défié peut répondre à ce combat.",
-        ephemeral: true,
       })
     }
 
@@ -1148,6 +1156,10 @@ module.exports = {
         result: "loss",
         fragmentsLost: transferResult.transferred,
       })
+
+      await progressQuest(client, winnerId, "pvp_play").catch(console.error)
+      await progressQuest(client, loserId, "pvp_play").catch(console.error)
+      await progressQuest(client, winnerId, "pvp_win").catch(console.error)
 
       await sessions.updateOne(
         {
