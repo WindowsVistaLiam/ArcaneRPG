@@ -1319,6 +1319,257 @@ const arcaneCards = [
     season: "Saison 2",
     tags: ["Zaun", "Mythe", "Janna"],
   }),
+  // =========================
+  // ÉVÉNEMENT ESTIVAL — FESTIVAL DES DEUX CITÉS
+  // =========================
+
+  // =========================
+  // JINX — ESTIVAL
+  // =========================
+  createCard({
+    characterKey: "jinx",
+    characterName: "Jinx",
+    variant: "Bombe à eau",
+    rarity: "common",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Jinx/common.jpg",
+    description: "Jinx remplace ses explosifs par des bombes à eau colorées. Le chaos reste le même, seule la température change.",
+    faction: "Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Zaun", "Jinx", "Fun"],
+  }),
+  createCard({
+    characterKey: "jinx",
+    characterName: "Jinx",
+    variant: "Festival des étincelles",
+    rarity: "rare",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Jinx/rare.jpg",
+    description: "Jinx illumine les toits de Zaun avec des feux d'artifice artisanaux, aussi beaux qu'imprévisibles.",
+    faction: "Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Zaun", "Jinx", "Explosifs"],
+  }),
+  createCard({
+    characterKey: "jinx",
+    characterName: "Jinx",
+    variant: "Feu d'artifice bleu",
+    rarity: "epic",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Jinx/epic.jpg",
+    description: "Une explosion bleue déchire le ciel d'été, transformant la nuit de Zaun en spectacle chaotique.",
+    faction: "Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Zaun", "Jinx", "Chaos"],
+  }),
+  createCard({
+    characterKey: "jinx",
+    characterName: "Jinx",
+    variant: "Soleil Bleu",
+    rarity: "legendary",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Jinx/legend.jpg",
+    description: "Le ciel d'été devient son terrain de jeu. Chaque rayon se change en étincelle, chaque silence en explosion.",
+    faction: "Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Zaun", "Jinx", "Légende"],
+  }),
+
+  // =========================
+  // VI — ESTIVAL
+  // =========================
+  createCard({
+    characterKey: "vi",
+    characterName: "Vi",
+    variant: "Débardeur d'été",
+    rarity: "common",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Vi/common.jpg",
+    description: "Vi tente de profiter d'une journée chaude sur les quais. Évidemment, une bagarre finit par éclater.",
+    faction: "Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Zaun", "Vi", "Combat"],
+  }),
+  createCard({
+    characterKey: "vi",
+    characterName: "Vi",
+    variant: "Combat sur les quais",
+    rarity: "rare",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Vi/rare.jpg",
+    description: "Sous un soleil écrasant, Vi règle les conflits de Zaun à coups de poings sur les quais.",
+    faction: "Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Zaun", "Vi", "Quais"],
+  }),
+  createCard({
+    characterKey: "vi",
+    characterName: "Vi",
+    variant: "Tournoi des quais",
+    rarity: "epic",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Vi/epic.jpg",
+    description: "Un tournoi clandestin attire les plus durs combattants de Zaun. Vi n'avait aucune intention de perdre.",
+    faction: "Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Zaun", "Vi", "Tournoi"],
+  }),
+  createCard({
+    characterKey: "vi",
+    characterName: "Vi",
+    variant: "Championne des quais",
+    rarity: "legendary",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Vi/legend.jpg",
+    description: "Sous le soleil brûlant de Zaun, personne ne tient debout face à la championne des quais.",
+    faction: "Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Zaun", "Vi", "Championne"],
+  }),
+
+  // =========================
+  // CAITLYN — ESTIVAL
+  // =========================
+  createCard({
+    characterKey: "caitlyn",
+    characterName: "Caitlyn Kiramman",
+    variant: "Ombrelle Kiramman",
+    rarity: "common",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Caitlyn/common.jpg",
+    description: "Même sous une chaleur écrasante, Caitlyn conserve l'élégance impeccable de la maison Kiramman.",
+    faction: "Piltover",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Piltover", "Caitlyn", "Kiramman"],
+  }),
+  createCard({
+    characterKey: "caitlyn",
+    characterName: "Caitlyn Kiramman",
+    variant: "Patrouille d'été",
+    rarity: "rare",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Caitlyn/rare.jpg",
+    description: "Pendant les festivités de Piltover, Caitlyn veille à ce que la fête ne tourne pas au désordre.",
+    faction: "Piltover",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Piltover", "Caitlyn", "Enforcer"],
+  }),
+  createCard({
+    characterKey: "caitlyn",
+    characterName: "Caitlyn Kiramman",
+    variant: "Tir au coucher du soleil",
+    rarity: "epic",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Caitlyn/epic.jpg",
+    description: "Dans la lumière dorée du soir, Caitlyn ajuste son tir avec une précision presque irréelle.",
+    faction: "Piltover",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Piltover", "Caitlyn", "Précision"],
+  }),
+  createCard({
+    characterKey: "caitlyn",
+    characterName: "Caitlyn Kiramman",
+    variant: "Reine du Festival",
+    rarity: "legendary",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Caitlyn/legend.jpg",
+    description: "Caitlyn incarne l'autorité élégante de Piltover pendant le Festival des Deux Cités.",
+    faction: "Piltover",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Piltover", "Caitlyn", "Festival"],
+  }),
+
+  // =========================
+  // EKKO — ESTIVAL
+  // =========================
+  createCard({
+    characterKey: "ekko",
+    characterName: "Ekko",
+    variant: "Course sur les toits",
+    rarity: "common",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/ekko/common.jpg",
+    description: "Ekko traverse les toits de Zaun sous le soleil couchant, toujours une seconde d'avance sur les autres.",
+    faction: "Firelights",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Firelights", "Ekko", "Zaun"],
+  }),
+  createCard({
+    characterKey: "ekko",
+    characterName: "Ekko",
+    variant: "Firelight d'été",
+    rarity: "rare",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/ekko/rare.jpg",
+    description: "Les Firelights profitent d'une rare journée de paix, guidés par l'énergie lumineuse d'Ekko.",
+    faction: "Firelights",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Firelights", "Ekko", "Résistance"],
+  }),
+  createCard({
+    characterKey: "ekko",
+    characterName: "Ekko",
+    variant: "Hoverboard solaire",
+    rarity: "epic",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/ekko/epic.jpg",
+    description: "Ekko file au-dessus de Zaun sur son hoverboard, laissant derrière lui une traînée de lumière estivale.",
+    faction: "Firelights",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Firelights", "Ekko", "Hoverboard"],
+  }),
+  createCard({
+    characterKey: "ekko",
+    characterName: "Ekko",
+    variant: "Été suspendu",
+    rarity: "legendary",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/ekko/legend.jpg",
+    description: "Un instant parfait, figé au bord du coucher de soleil, avant que le temps ne reprenne son cours.",
+    faction: "Firelights",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Firelights", "Ekko", "Temps"],
+  }),
+
+  // =========================
+  // JAYCE — ESTIVAL
+  // =========================
+  createCard({
+    characterKey: "jayce",
+    characterName: "Jayce Talis",
+    variant: "Marteau en pause",
+    rarity: "common",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Jayce%20Viktor/Jayce.jpg",
+    description: "Même les héros de Piltover ont besoin d'un jour de repos. Jayce essaie de poser son marteau, au moins quelques minutes.",
+    faction: "Piltover",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Piltover", "Jayce", "Repos"],
+  }),
+
+  // =========================
+  // VIKTOR — ESTIVAL
+  // =========================
+  createCard({
+    characterKey: "viktor",
+    characterName: "Viktor",
+    variant: "Croquis au soleil",
+    rarity: "common",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Jayce%20Viktor/Viktor.jpg",
+    description: "Viktor griffonne de nouvelles idées Hextech sur un balcon lumineux, loin du tumulte du laboratoire.",
+    faction: "Piltover / Zaun",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Piltover", "Zaun", "Viktor"],
+  }),
+
+  // =========================
+  // MEL — ESTIVAL
+  // =========================
+  createCard({
+    characterKey: "mel",
+    characterName: "Mel Medarda",
+    variant: "Couronne solaire",
+    rarity: "epic",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Mel/epic.jpg",
+    description: "Sous une lumière dorée, Mel impose sa présence avec la grâce d'une souveraine et la prudence d'une stratège.",
+    faction: "Piltover / Noxus",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Piltover", "Noxus", "Pouvoir"],
+  }),
+  createCard({
+    characterKey: "mel",
+    characterName: "Mel Medarda",
+    variant: "Impératrice du soleil",
+    rarity: "legendary",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/Summer/Mel/legend.jpg",
+    description: "Mel rayonne comme une figure presque divine, entre magie, diplomatie et héritage Medarda.",
+    faction: "Piltover / Noxus",
+    season: "Événement Estival",
+    tags: ["Estival", "Festival des Deux Cités", "Piltover", "Noxus", "Lumière"],
+  }),
 ]
 
 module.exports = arcaneCards

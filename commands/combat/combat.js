@@ -89,16 +89,24 @@ function buildCardFromPlayerCard(playerCard) {
     return catalogCard
   }
 
-  return {
-    key: playerCard.cardKey,
-    name: playerCard.cardName || playerCard.cardKey,
-    characterName: playerCard.cardName || playerCard.cardKey,
-    rarity: playerCard.rarity || "common",
-    rarityLabel: playerCard.rarityLabel || "Commun",
-    value: playerCard.value || 0,
-    image: playerCard.image || "",
-    description: playerCard.description || "",
-  }
+return {
+  key: playerCard.cardKey,
+  name: playerCard.cardName || playerCard.cardKey,
+  characterName: playerCard.characterName || playerCard.cardName || playerCard.cardKey,
+  rarity: playerCard.rarity || "common",
+  rarityLabel: playerCard.rarityLabel || "Commun",
+  value: playerCard.value || 0,
+  image: playerCard.image || "",
+  description: playerCard.description || "",
+  faction: playerCard.faction || "Inconnue",
+  season: playerCard.season || "Fusion",
+  tags: playerCard.tags || [],
+  source: playerCard.source || "player_cards",
+  isPullable: playerCard.isPullable,
+  fusionBonusPercent: playerCard.fusionBonusPercent || 0,
+  ingredients: playerCard.ingredients || [],
+  battleStats: playerCard.battleStats || null,
+}
 }
 
 function formatRemainingTime(ms) {

@@ -59,13 +59,33 @@ function normalizeStats(stats) {
 }
 
 function getCardStats(card) {
-  const baseStats = BASE_STATS_BY_RARITY[card.rarity] || BASE_STATS_BY_RARITY.common
+  if (card?.battleStats) {
+    return normalizeStats(card.battleStats)
+  }
+
+  if (
+    card?.hp !== undefined &&
+    card?.attack !== undefined &&
+    card?.defense !== undefined &&
+    card?.speed !== undefined
+  ) {
+    return normalizeStats({
+      hp: card.hp,
+      attack: card.attack,
+      defense: card.defense,
+      speed: card.speed,
+    })
+  }
+
+  const baseStats = BASE_STATS_BY_RARITY[card?.rarity] || BASE_STATS_BY_RARITY.common
+  const fusionBonusPercent = Number(card?.fusionBonusPercent || 0)
+  const fusionMultiplier = 1 + fusionBonusPercent / 100
 
   return normalizeStats({
-    hp: baseStats.hp,
-    attack: baseStats.attack,
-    defense: baseStats.defense,
-    speed: baseStats.speed,
+    hp: Math.round(baseStats.hp * fusionMultiplier),
+    attack: Math.round(baseStats.attack * fusionMultiplier),
+    defense: Math.round(baseStats.defense * fusionMultiplier),
+    speed: Math.round(baseStats.speed * fusionMultiplier),
   })
 }
 
