@@ -542,7 +542,7 @@ const fusionCards = [
     ingredients: ["silco_mythic_reve_de_zaun","jinx_mythic_blue_flare"],
   }),
 
-  createFusionCard({
+   createFusionCard({
     key: "fusion_mel_leblanc_mythic",
     name: "Mel & LeBlanc — Corruption forcée",
     characterName: "Mel & LeBlanc",
@@ -553,7 +553,7 @@ const fusionCards = [
     season: "Fusion",
     tags: ["Mythique", "Mel", "LeBlanc", "Rose Noire", "Magie"],
     ingredients: ["mel_mythic_lumiere_doree", "leblanc_legendary_rose_noire"],
-  })
+  }),
 
   createFusionCard({
     key: "fusion_isha_jinx_mythic",
@@ -564,8 +564,8 @@ const fusionCards = [
     image: "https://media1.tenor.com/m/zFxTvMwBzlkAAAAd/jinx-jinx-arcane.gif",
     faction: "Zaun",
     season: "Fusion",
-    tags: ["Mythique","Zaun","Isha","Jinx","Tragédie"],
-    ingredients: ["isha_mythic_sacrifice","jinx_mythic_blue_flare"],
+    tags: ["Mythique", "Zaun", "Isha", "Jinx", "Tragédie"],
+    ingredients: ["isha_mythic_sacrifice", "jinx_mythic_blue_flare"],
   }),
 ]
 
