@@ -568,5 +568,5 @@ createFusionCard({
   tags: ["Mythique", "Zaun", "Isha", "Jinx", "Tragédie"],
   ingredients: ["isha_mythic_sacrifice", "jinx_mythic_blue_flare"],
 }),
-
+]
 module.exports = fusionCards
