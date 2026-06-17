@@ -48,18 +48,17 @@ function createFusionCard({
 }
 
 const fusionCards = [
-  // =========================
-  // FUSIONS COMMUNES
-  // =========================
   createFusionCard({
     key: "fusion_jinx_ekko_common",
     name: "Jinx & Ekko — Souvenirs de Zaun",
     characterName: "Jinx & Ekko",
     rarity: "common",
     description: "Une carte fusion unique née de Powder et du jeune Ekko, souvenir d'une Zaun encore pleine d'espoir.",
+    image: "https://static.wikia.nocookie.net/arcane/images/5/5a/1210.png",
     faction: "Zaun",
-    tags: ["Zaun", "Jinx", "Ekko", "Enfance"],
-    ingredients: ["jinx_common_powder", "ekko_common_petit_genie_de_zaun"],
+    season: "Fusion",
+    tags: ["Zaun","Jinx","Ekko","Enfance"],
+    ingredients: ["jinx_common_powder","ekko_common_petit_genie_de_zaun"],
   }),
 
   createFusionCard({
@@ -68,9 +67,11 @@ const fusionCards = [
     characterName: "Vi & Caitlyn",
     rarity: "common",
     description: "Une carte fusion unique représentant le premier lien entre Zaun et Piltover.",
+    image: "https://static.wikia.nocookie.net/arcane/images/c/cf/Caitvi_Prison.jpg",
     faction: "Piltover / Zaun",
-    tags: ["Piltover", "Zaun", "Vi", "Caitlyn"],
-    ingredients: ["vi_common_violet", "caitlyn_common_heritiere_kiramman"],
+    season: "Fusion",
+    tags: ["Piltover","Zaun","Vi","Caitlyn"],
+    ingredients: ["vi_common_violet","caitlyn_common_heritiere_kiramman"],
   }),
 
   createFusionCard({
@@ -79,9 +80,11 @@ const fusionCards = [
     characterName: "Jayce & Viktor",
     rarity: "common",
     description: "Une carte fusion unique représentant la naissance d'un rêve scientifique.",
+    image: "https://static.wikia.nocookie.net/arcane/images/4/4e/Jayce_%26_Viktor_Season_1_Episode_3_001.png",
     faction: "Piltover",
-    tags: ["Piltover", "Hextech", "Science"],
-    ingredients: ["jayce_common_etudiant_ambitieux", "viktor_common_assistant_de_l_academie"],
+    season: "Fusion",
+    tags: ["Piltover","Hextech","Science"],
+    ingredients: ["jayce_common_etudiant_ambitieux","viktor_common_assistant_de_l_academie"],
   }),
 
   createFusionCard({
@@ -90,20 +93,11 @@ const fusionCards = [
     characterName: "Mylo & Claggor",
     rarity: "common",
     description: "Une carte fusion dédiée aux deux amis d'enfance de Vi et Powder.",
+    image: "https://static.wikia.nocookie.net/arcane/images/b/b6/115.jpeg",
     faction: "Zaun",
-    tags: ["Zaun", "Vander", "Enfance"],
-    ingredients: ["mylo_common_jeune_voleur", "claggor_common_jeune_protecteur"],
-  }),
-
-  createFusionCard({
-    key: "fusion_benzo_huck_common",
-    name: "Benzo & Huck — Ombres du Last Drop",
-    characterName: "Benzo & Huck",
-    rarity: "common",
-    description: "Une carte fusion des visages ordinaires et fragiles de Zaun.",
-    faction: "Zaun",
-    tags: ["Zaun", "Last Drop", "Commerce"],
-    ingredients: ["benzo_common_marchand_de_zaun", "huck_common_client_du_last_drop"],
+    season: "Fusion",
+    tags: ["Zaun","Vander","Enfance"],
+    ingredients: ["mylo_common_jeune_voleur","claggor_common_jeune_protecteur"],
   }),
 
   createFusionCard({
@@ -112,42 +106,11 @@ const fusionCards = [
     characterName: "Heimerdinger & Ekko",
     rarity: "common",
     description: "Une carte fusion entre la prudence de Piltover et l'ingéniosité de Zaun.",
+    image: "https://static.wikia.nocookie.net/arcane/images/f/fa/Heimer_Ekko.jpg",
     faction: "Piltover / Firelights",
-    tags: ["Piltover", "Firelights", "Science", "Yordle"],
-    ingredients: ["heimerdinger_common_professeur", "ekko_common_petit_genie_de_zaun"],
-  }),
-
-  createFusionCard({
-    key: "fusion_salo_shoola_common",
-    name: "Salo & Shoola — Conseil de Piltover",
-    characterName: "Salo & Shoola",
-    rarity: "common",
-    description: "Une carte fusion des jeux politiques du Conseil de Piltover.",
-    faction: "Piltover",
-    tags: ["Piltover", "Conseil", "Politique"],
-    ingredients: ["salo_common_conseiller_de_piltover", "shoola_common_conseillere"],
-  }),
-
-  createFusionCard({
-    key: "fusion_hoskel_bolbok_common",
-    name: "Hoskel & Bolbok — Voix du Conseil",
-    characterName: "Hoskel & Bolbok",
-    rarity: "common",
-    description: "Une carte fusion représentant les voix secondaires du pouvoir piltovien.",
-    faction: "Piltover",
-    tags: ["Piltover", "Conseil"],
-    ingredients: ["hoskel_common_conseiller", "bolbok_common_conseiller"],
-  }),
-
-  createFusionCard({
-    key: "fusion_marcus_maddie_common",
-    name: "Marcus & Maddie — Ligne bleue",
-    characterName: "Marcus & Maddie",
-    rarity: "common",
-    description: "Une carte fusion sur les Enforcers pris entre devoir, ambition et loyauté.",
-    faction: "Piltover",
-    tags: ["Piltover", "Enforcer"],
-    ingredients: ["marcus_common_enforcer_ambitieux", "maddie_common_enforcer_enthousiaste"],
+    season: "Fusion",
+    tags: ["Piltover","Firelights","Science","Yordle"],
+    ingredients: ["heimerdinger_common_professeur","ekko_common_petit_genie_de_zaun"],
   }),
 
   createFusionCard({
@@ -156,9 +119,11 @@ const fusionCards = [
     characterName: "Loris & Steb",
     rarity: "common",
     description: "Une carte fusion de terrain pour les Enforcers de Piltover.",
+    image: "https://static.wikia.nocookie.net/arcane/images/8/85/Strike_Team.png",
     faction: "Piltover",
-    tags: ["Piltover", "Enforcer", "Terrain"],
-    ingredients: ["loris_common_enforcer_massif", "steb_common_enforcer_silencieux"],
+    season: "Fusion",
+    tags: ["Piltover","Enforcer","Terrain"],
+    ingredients: ["loris_common_enforcer_massif","steb_common_enforcer_silencieux"],
   }),
 
   createFusionCard({
@@ -167,9 +132,11 @@ const fusionCards = [
     characterName: "Mel & Elora",
     rarity: "common",
     description: "Une carte fusion du pouvoir qui s'exerce dans les couloirs de Piltover.",
+    image: "https://static.wikia.nocookie.net/arcane/images/3/32/128.png",
     faction: "Piltover",
-    tags: ["Piltover", "Mel", "Politique"],
-    ingredients: ["mel_common_conseillere", "elora_common_assistante_de_mel"],
+    season: "Fusion",
+    tags: ["Piltover","Mel","Politique"],
+    ingredients: ["mel_common_conseillere","elora_common_assistante_de_mel"],
   }),
 
   createFusionCard({
@@ -178,42 +145,11 @@ const fusionCards = [
     characterName: "Viktor & Sky",
     rarity: "common",
     description: "Une carte fusion des laboratoires, des espoirs et des regrets.",
+    image: "https://static.wikia.nocookie.net/arcane/images/9/9b/Viktor_Sky_Concept.jpeg",
     faction: "Piltover",
-    tags: ["Piltover", "Science", "Viktor"],
-    ingredients: ["viktor_common_assistant_de_l_academie", "sky_common_assistante_de_viktor"],
-  }),
-
-  createFusionCard({
-    key: "fusion_deckard_lock_common",
-    name: "Deckard & Lock — Brutes des bas-fonds",
-    characterName: "Deckard & Lock",
-    rarity: "common",
-    description: "Une carte fusion des sbires violents qui hantent les rues de Zaun.",
-    faction: "Zaun",
-    tags: ["Zaun", "Crime", "Brute"],
-    ingredients: ["deckard_common_brute_de_zaun", "lock_common_homme_de_main"],
-  }),
-
-  createFusionCard({
-    key: "fusion_scar_lest_common",
-    name: "Scar & Lest — Contacts de Zaun",
-    characterName: "Scar & Lest",
-    rarity: "common",
-    description: "Une carte fusion des réseaux discrets de la résistance et de l'information.",
-    faction: "Zaun / Firelights",
-    tags: ["Zaun", "Firelights", "Information"],
-    ingredients: ["scar_common_firelight", "lest_common_informateur"],
-  }),
-
-  createFusionCard({
-    key: "fusion_babette_gert_common",
-    name: "Babette & Gert — Nuits de Zaun",
-    characterName: "Babette & Gert",
-    rarity: "common",
-    description: "Une carte fusion des lieux, des voix et des regards de Zaun.",
-    faction: "Zaun",
-    tags: ["Zaun", "Nuit", "Secondaire"],
-    ingredients: ["babette_common_tenanciere_de_zaun", "gert_common_habitante_de_zaun"],
+    season: "Fusion",
+    tags: ["Piltover","Science","Viktor"],
+    ingredients: ["viktor_common_assistant_de_l_academie","sky_common_assistante_de_viktor"],
   }),
 
   createFusionCard({
@@ -222,23 +158,24 @@ const fusionCards = [
     characterName: "Caitlyn & Tobias",
     rarity: "common",
     description: "Une carte fusion du nom Kiramman et de son poids familial.",
+    image: "https://static.wikia.nocookie.net/arcane/images/d/d3/214.png",
     faction: "Piltover",
-    tags: ["Piltover", "Kiramman", "Famille"],
-    ingredients: ["caitlyn_common_heritiere_kiramman", "tobias_common_pere_de_caitlyn"],
+    season: "Fusion",
+    tags: ["Piltover","Kiramman","Famille"],
+    ingredients: ["caitlyn_common_heritiere_kiramman","tobias_common_pere_de_caitlyn"],
   }),
 
-  // =========================
-  // FUSIONS RARES
-  // =========================
   createFusionCard({
     key: "fusion_jinx_silco_rare",
     name: "Jinx & Silco — Héritage toxique",
     characterName: "Jinx & Silco",
     rarity: "rare",
     description: "Une fusion rare entre l'instabilité de Jinx et l'emprise de Silco.",
+    image: "https://static.wikia.nocookie.net/arcane/images/6/6d/1411.jpeg",
     faction: "Zaun",
-    tags: ["Zaun", "Jinx", "Silco", "Shimmer"],
-    ingredients: ["jinx_rare_inventrice_instable", "silco_rare_chef_de_l_ombre"],
+    season: "Fusion",
+    tags: ["Zaun","Jinx","Silco","Shimmer"],
+    ingredients: ["jinx_rare_inventrice_instable","silco_rare_chef_de_l_ombre"],
   }),
 
   createFusionCard({
@@ -247,20 +184,11 @@ const fusionCards = [
     characterName: "Vi & Vander",
     rarity: "rare",
     description: "Une fusion rare entre la rage de Vi et l'héritage protecteur de Vander.",
+    image: "https://static.wikia.nocookie.net/arcane/images/8/84/1217.png",
     faction: "Zaun",
-    tags: ["Zaun", "Famille", "Combat"],
-    ingredients: ["vi_rare_prisonniere_de_stillwater", "vander_rare_protecteur_du_last_drop"],
-  }),
-
-  createFusionCard({
-    key: "fusion_caitlyn_grayson_rare",
-    name: "Caitlyn & Grayson — Justice de Piltover",
-    characterName: "Caitlyn & Grayson",
-    rarity: "rare",
-    description: "Une fusion rare de l'autorité piltovienne et de l'idéal de justice.",
-    faction: "Piltover",
-    tags: ["Piltover", "Enforcer", "Justice"],
-    ingredients: ["caitlyn_rare_enquetrice", "grayson_rare_sheriff_de_piltover"],
+    season: "Fusion",
+    tags: ["Zaun","Famille","Combat"],
+    ingredients: ["vi_rare_prisonniere_de_stillwater","vander_rare_protecteur_du_last_drop"],
   }),
 
   createFusionCard({
@@ -269,9 +197,11 @@ const fusionCards = [
     characterName: "Ekko & Scar",
     rarity: "rare",
     description: "Une fusion rare de la résistance organisée contre le chaos de Zaun.",
+    image: "https://static.wikia.nocookie.net/arcane/images/c/c0/144.jpeg",
     faction: "Firelights",
-    tags: ["Firelights", "Zaun", "Résistance"],
-    ingredients: ["ekko_rare_chef_des_firelights", "scar_rare_guerrier_firelight"],
+    season: "Fusion",
+    tags: ["Firelights","Zaun","Résistance"],
+    ingredients: ["ekko_rare_chef_des_firelights","scar_rare_guerrier_firelight"],
   }),
 
   createFusionCard({
@@ -280,9 +210,11 @@ const fusionCards = [
     characterName: "Jayce & Viktor",
     rarity: "rare",
     description: "Une fusion rare du rêve Hextech avant sa fracture.",
+    image: "https://static.wikia.nocookie.net/arcane/images/4/4e/Jayce_%26_Viktor_Season_1_Episode_3_001.png",
     faction: "Piltover",
-    tags: ["Piltover", "Hextech", "Science"],
-    ingredients: ["jayce_rare_inventeur_hextech", "viktor_rare_scientifique_hextech"],
+    season: "Fusion",
+    tags: ["Piltover","Hextech","Science"],
+    ingredients: ["jayce_rare_inventeur_hextech","viktor_rare_scientifique_hextech"],
   }),
 
   createFusionCard({
@@ -291,31 +223,11 @@ const fusionCards = [
     characterName: "Mel & Ambessa",
     rarity: "rare",
     description: "Une fusion rare entre diplomatie piltovienne et brutalité noxienne.",
+    image: "https://static.wikia.nocookie.net/arcane/images/e/e5/2829.png",
     faction: "Piltover / Noxus",
-    tags: ["Noxus", "Piltover", "Medarda"],
-    ingredients: ["mel_rare_stratege_politique", "ambessa_rare_generale_noxienne"],
-  }),
-
-  createFusionCard({
-    key: "fusion_silco_sevika_rare",
-    name: "Silco & Sevika — Pouvoir des bas-fonds",
-    characterName: "Silco & Sevika",
-    rarity: "rare",
-    description: "Une fusion rare entre stratégie criminelle et force armée.",
-    faction: "Zaun",
-    tags: ["Zaun", "Silco", "Sevika", "Crime"],
-    ingredients: ["silco_rare_chef_de_l_ombre", "sevika_rare_lieutenante_de_silco"],
-  }),
-
-  createFusionCard({
-    key: "fusion_singed_deckard_rare",
-    name: "Singed & Deckard — Premier Shimmer",
-    characterName: "Singed & Deckard",
-    rarity: "rare",
-    description: "Une fusion rare liée aux premières horreurs du Shimmer.",
-    faction: "Zaun",
-    tags: ["Zaun", "Shimmer", "Expérience"],
-    ingredients: ["singed_rare_docteur_reveck", "deckard_rare_mute_au_shimmer"],
+    season: "Fusion",
+    tags: ["Noxus","Piltover","Medarda"],
+    ingredients: ["mel_rare_stratege_politique","ambessa_rare_generale_noxienne"],
   }),
 
   createFusionCard({
@@ -324,9 +236,11 @@ const fusionCards = [
     characterName: "Ambessa & Kino",
     rarity: "rare",
     description: "Une fusion rare du poids familial qui poursuit la maison Medarda.",
+    image: "https://static.wikia.nocookie.net/arcane/images/e/e6/Medarda_Family_Portrait.jpg",
     faction: "Noxus",
-    tags: ["Noxus", "Medarda", "Famille"],
-    ingredients: ["ambessa_rare_generale_noxienne", "kino_rare_heritier_perdu"],
+    season: "Fusion",
+    tags: ["Noxus","Medarda","Famille"],
+    ingredients: ["ambessa_rare_generale_noxienne","kino_rare_heritier_perdu"],
   }),
 
   createFusionCard({
@@ -335,20 +249,11 @@ const fusionCards = [
     characterName: "Marcus & Silco",
     rarity: "rare",
     description: "Une fusion rare de corruption, peur et pouvoir clandestin.",
+    image: "https://static.wikia.nocookie.net/arcane/images/4/47/Silco_speaking_to_Marcus.png",
     faction: "Piltover / Zaun",
-    tags: ["Piltover", "Zaun", "Corruption", "Silco"],
-    ingredients: ["marcus_rare_sheriff_compromis", "silco_rare_chef_de_l_ombre"],
-  }),
-
-  createFusionCard({
-    key: "fusion_cassandra_caitlyn_rare",
-    name: "Cassandra & Caitlyn — Maison Kiramman",
-    characterName: "Cassandra & Caitlyn",
-    rarity: "rare",
-    description: "Une fusion rare de devoir, héritage et pouvoir familial.",
-    faction: "Piltover",
-    tags: ["Piltover", "Kiramman", "Famille"],
-    ingredients: ["cassandra_rare_matriarche_kiramman", "caitlyn_rare_enquetrice"],
+    season: "Fusion",
+    tags: ["Piltover","Zaun","Corruption","Silco"],
+    ingredients: ["marcus_rare_sheriff_compromis","silco_rare_chef_de_l_ombre"],
   }),
 
   createFusionCard({
@@ -357,9 +262,11 @@ const fusionCards = [
     characterName: "Maddie & Caitlyn",
     rarity: "rare",
     description: "Une fusion rare sur la loyauté, l'ambition et les tensions des Enforcers.",
+    image: "https://static.wikia.nocookie.net/arcane/images/8/85/Strike_Team.png",
     faction: "Piltover",
-    tags: ["Piltover", "Enforcer", "Caitlyn"],
-    ingredients: ["maddie_rare_loyaute_trouble", "caitlyn_rare_enquetrice"],
+    season: "Fusion",
+    tags: ["Piltover","Enforcer","Caitlyn"],
+    ingredients: ["maddie_rare_loyaute_trouble","caitlyn_rare_enquetrice"],
   }),
 
   createFusionCard({
@@ -368,9 +275,11 @@ const fusionCards = [
     characterName: "Finn & Renni",
     rarity: "rare",
     description: "Une fusion rare des ambitions concurrentes des Chem-Barons.",
+    image: "https://static.wikia.nocookie.net/arcane/images/3/32/Chem_Barons.png",
     faction: "Zaun",
-    tags: ["Zaun", "Chem-Baron", "Crime"],
-    ingredients: ["finn_rare_chem_baron_arrogant", "renni_rare_chem_baronne"],
+    season: "Fusion",
+    tags: ["Zaun","Chem-Baron","Crime"],
+    ingredients: ["finn_rare_chem_baron_arrogant","renni_rare_chem_baronne"],
   }),
 
   createFusionCard({
@@ -379,34 +288,24 @@ const fusionCards = [
     characterName: "Smeech & Chross",
     rarity: "rare",
     description: "Une fusion rare des intérêts mécaniques et criminels de Zaun.",
+    image: "https://static.wikia.nocookie.net/arcane/images/3/32/Chem_Barons.png",
     faction: "Zaun",
-    tags: ["Zaun", "Chem-Baron", "Pouvoir"],
-    ingredients: ["smeech_rare_chem_baron_yordle", "chross_rare_baron_de_zaun"],
+    season: "Fusion",
+    tags: ["Zaun","Chem-Baron","Pouvoir"],
+    ingredients: ["smeech_rare_chem_baron_yordle","chross_rare_baron_de_zaun"],
   }),
 
-  createFusionCard({
-    key: "fusion_huck_singed_rare",
-    name: "Huck & Singed — Dépendance au Shimmer",
-    characterName: "Huck & Singed",
-    rarity: "rare",
-    description: "Une fusion rare sur les victimes et les artisans du Shimmer.",
-    faction: "Zaun",
-    tags: ["Zaun", "Shimmer", "Tragédie"],
-    ingredients: ["huck_rare_dependant_du_shimmer", "singed_rare_docteur_reveck"],
-  }),
-
-  // =========================
-  // FUSIONS ÉPIQUES
-  // =========================
   createFusionCard({
     key: "fusion_jinx_vi_epic",
     name: "Jinx & Vi — Sœurs fracturées",
     characterName: "Jinx & Vi",
     rarity: "epic",
-    description: "Une fusion épique de rage, culpabilité et amour impossible.",
+    description: "La famille se retrouve dans la douleur.",
+    image: "https://static.wikia.nocookie.net/arcane/images/a/ae/2511.png",
     faction: "Zaun",
-    tags: ["Zaun", "Jinx", "Vi", "Famille"],
-    ingredients: ["jinx_epic_tireuse_de_zaun", "vi_epic_combattante_des_bas_fonds"],
+    season: "Fusion",
+    tags: ["Zaun","Jinx","Vi","Famille"],
+    ingredients: ["jinx_epic_tireuse_de_zaun","vi_epic_combattante_des_bas_fonds"],
   }),
 
   createFusionCard({
@@ -415,9 +314,11 @@ const fusionCards = [
     characterName: "Jinx & Silco",
     rarity: "epic",
     description: "Une fusion épique de l'affection la plus toxique de Zaun.",
+    image: "https://static.wikia.nocookie.net/arcane/images/5/5f/1421.jpeg",
     faction: "Zaun",
-    tags: ["Zaun", "Jinx", "Silco", "Tragédie"],
-    ingredients: ["jinx_epic_tireuse_de_zaun", "silco_epic_parrain_de_zaun"],
+    season: "Fusion",
+    tags: ["Zaun","Jinx","Silco","Tragédie"],
+    ingredients: ["jinx_epic_tireuse_de_zaun","silco_epic_parrain_de_zaun"],
   }),
 
   createFusionCard({
@@ -426,9 +327,11 @@ const fusionCards = [
     characterName: "Ekko & Heimerdinger",
     rarity: "epic",
     description: "Une fusion épique de sagesse ancienne et d'invention rebelle.",
+    image: "https://static.wikia.nocookie.net/arcane/images/f/fa/Heimer_Ekko.jpg",
     faction: "Firelights",
-    tags: ["Firelights", "Yordle", "Science", "Zaun"],
-    ingredients: ["ekko_epic_sur_son_hoverboard", "heimerdinger_epic_ami_des_firelights"],
+    season: "Fusion",
+    tags: ["Firelights","Yordle","Science","Zaun"],
+    ingredients: ["ekko_epic_sur_son_hoverboard","heimerdinger_epic_ami_des_firelights"],
   }),
 
   createFusionCard({
@@ -437,9 +340,11 @@ const fusionCards = [
     characterName: "Jayce & Mel",
     rarity: "epic",
     description: "Une fusion épique entre progrès scientifique et stratégie politique.",
+    image: "https://static.wikia.nocookie.net/arcane/images/c/cf/2821.png",
     faction: "Piltover",
-    tags: ["Piltover", "Hextech", "Politique"],
-    ingredients: ["jayce_epic_conseiller", "mel_epic_heritiere_medarda"],
+    season: "Fusion",
+    tags: ["Piltover","Hextech","Politique"],
+    ingredients: ["jayce_epic_conseiller","mel_epic_heritiere_medarda"],
   }),
 
   createFusionCard({
@@ -448,9 +353,11 @@ const fusionCards = [
     characterName: "Jayce & Viktor",
     rarity: "epic",
     description: "Une fusion épique de deux ambitions liées par le Hexcore.",
+    image: "https://static.wikia.nocookie.net/arcane/images/4/4e/Jayce_%26_Viktor_Season_1_Episode_3_001.png",
     faction: "Piltover / Hextech",
-    tags: ["Piltover", "Hextech", "Hexcore"],
-    ingredients: ["jayce_epic_conseiller", "viktor_epic_touche_par_le_hexcore"],
+    season: "Fusion",
+    tags: ["Piltover","Hextech","Hexcore"],
+    ingredients: ["jayce_epic_conseiller","viktor_epic_touche_par_le_hexcore"],
   }),
 
   createFusionCard({
@@ -459,31 +366,11 @@ const fusionCards = [
     characterName: "Viktor & Sky",
     rarity: "epic",
     description: "Une fusion épique d'obsession scientifique et de perte silencieuse.",
+    image: "https://static.wikia.nocookie.net/arcane/images/9/9b/Viktor_Sky_Concept.jpeg",
     faction: "Piltover / Hextech",
-    tags: ["Hexcore", "Viktor", "Sky", "Souvenir"],
-    ingredients: ["viktor_epic_touche_par_le_hexcore", "sky_epic_echo_du_hexcore"],
-  }),
-
-  createFusionCard({
-    key: "fusion_sevika_smeech_epic",
-    name: "Sevika & Smeech — Métal de Zaun",
-    characterName: "Sevika & Smeech",
-    rarity: "epic",
-    description: "Une fusion épique de mécanique brutale et de pouvoir des bas-fonds.",
-    faction: "Zaun",
-    tags: ["Zaun", "Mécanique", "Chem-Baron"],
-    ingredients: ["sevika_epic_bras_mecanique", "smeech_epic_mecanique_de_zaun"],
-  }),
-
-  createFusionCard({
-    key: "fusion_cassandra_mel_epic",
-    name: "Cassandra & Mel — Conseil doré",
-    characterName: "Cassandra & Mel",
-    rarity: "epic",
-    description: "Une fusion épique des maisons influentes et des décisions de Piltover.",
-    faction: "Piltover",
-    tags: ["Piltover", "Conseil", "Politique"],
-    ingredients: ["cassandra_epic_conseillere", "mel_epic_heritiere_medarda"],
+    season: "Fusion",
+    tags: ["Hexcore","Viktor","Sky","Souvenir"],
+    ingredients: ["viktor_epic_touche_par_le_hexcore","sky_epic_echo_du_hexcore"],
   }),
 
   createFusionCard({
@@ -492,34 +379,24 @@ const fusionCards = [
     characterName: "Ambessa & Mel",
     rarity: "epic",
     description: "Une fusion épique entre l'héritage noxien et la finesse de Piltover.",
+    image: "https://media.discordapp.net/attachments/1516719546164183060/1516724898620248214/3670834962dc8094b9a77bca27db1ccf.png",
     faction: "Piltover / Noxus",
-    tags: ["Noxus", "Piltover", "Medarda"],
-    ingredients: ["ambessa_epic_mere_de_mel", "mel_epic_heritiere_medarda"],
+    season: "Fusion",
+    tags: ["Noxus","Piltover","Medarda"],
+    ingredients: ["ambessa_epic_mere_de_mel","mel_epic_heritiere_medarda"],
   }),
 
-  createFusionCard({
-    key: "fusion_singed_sevika_epic",
-    name: "Singed & Sevika — Shimmer armé",
-    characterName: "Singed & Sevika",
-    rarity: "epic",
-    description: "Une fusion épique de science toxique et de violence mécanique.",
-    faction: "Zaun",
-    tags: ["Zaun", "Shimmer", "Combat"],
-    ingredients: ["singed_epic_maitre_du_shimmer", "sevika_epic_bras_mecanique"],
-  }),
-
-  // =========================
-  // FUSIONS LÉGENDAIRES
-  // =========================
   createFusionCard({
     key: "fusion_jinx_vi_legendary",
     name: "Jinx & Vi — Dernière étreinte",
     characterName: "Jinx & Vi",
     rarity: "legendary",
-    description: "Une fusion légendaire du lien brisé entre deux sœurs devenues symboles.",
+    description: "La famille se retrouve beaucoup plus appaisée désormais.",
+    image: "https://static.wikia.nocookie.net/arcane/images/7/7b/2616.png",
     faction: "Zaun",
-    tags: ["Zaun", "Jinx", "Vi", "Famille", "Légende"],
-    ingredients: ["jinx_legendary_legende_de_zaun", "vi_legendary_gants_hextech"],
+    season: "Fusion",
+    tags: ["Zaun","Jinx","Vi","Famille","Légende"],
+    ingredients: ["jinx_legendary_legende_de_zaun","vi_legendary_gants_hextech"],
   }),
 
   createFusionCard({
@@ -527,32 +404,25 @@ const fusionCards = [
     name: "Vi & Caitlyn — Pont entre deux mondes",
     characterName: "Vi & Caitlyn",
     rarity: "legendary",
-    description: "Une fusion légendaire entre la force de Zaun et la justice de Piltover.",
+    description: "Un amour impossible entre deux mondes que tout oppose.",
+    image: "https://static.wikia.nocookie.net/arcane/images/b/b1/235.png",
     faction: "Piltover / Zaun",
-    tags: ["Piltover", "Zaun", "Vi", "Caitlyn"],
-    ingredients: ["vi_legendary_gants_hextech", "caitlyn_legendary_commandante"],
+    season: "Fusion",
+    tags: ["Piltover","Zaun","Vi","Caitlyn"],
+    ingredients: ["vi_legendary_gants_hextech","caitlyn_legendary_commandante"],
   }),
 
   createFusionCard({
     key: "fusion_jayce_viktor_legendary",
-    name: "Jayce & Viktor — Rêve brisé du progrès",
+    name: "Jayce & Viktor — Pardon à un ami",
     characterName: "Jayce & Viktor",
     rarity: "legendary",
-    description: "Une fusion légendaire de deux visions opposées du progrès.",
+    description: "Les meilleurs amis du monde.",
+    image: "https://media.discordapp.net/attachments/1516719546164183060/1516723858537709639/3706526fac2d272849f4e1912d9e9b8f.png",
     faction: "Piltover / Hextech",
-    tags: ["Piltover", "Hextech", "Progrès"],
-    ingredients: ["jayce_legendary_marteau_mercury", "viktor_legendary_apotre_du_progres"],
-  }),
-
-  createFusionCard({
-    key: "fusion_silco_warwick_legendary",
-    name: "Silco & Warwick — Fantômes de Vander",
-    characterName: "Silco & Warwick",
-    rarity: "legendary",
-    description: "Une fusion légendaire de trahison, mémoire et monstruosité.",
-    faction: "Zaun",
-    tags: ["Zaun", "Silco", "Warwick", "Vander"],
-    ingredients: ["silco_legendary_pere_de_jinx", "warwick_legendary_bete_de_zaun"],
+    season: "Fusion",
+    tags: ["Piltover","Hextech","Progrès"],
+    ingredients: ["jayce_legendary_marteau_mercury","viktor_legendary_apotre_du_progres"],
   }),
 
   createFusionCard({
@@ -561,9 +431,11 @@ const fusionCards = [
     characterName: "Singed & Warwick",
     rarity: "legendary",
     description: "Une fusion légendaire du savant et de sa création la plus douloureuse.",
+    image: "https://media.discordapp.net/attachments/1516719546164183060/1516724325192044594/dc0ac8ad793d4c4bd75e9170060b2f7e.png",
     faction: "Zaun",
-    tags: ["Zaun", "Singed", "Warwick", "Science"],
-    ingredients: ["singed_legendary_createur_de_monstres", "warwick_legendary_bete_de_zaun"],
+    season: "Fusion",
+    tags: ["Zaun","Singed","Warwick","Science"],
+    ingredients: ["singed_legendary_createur_de_monstres","warwick_legendary_bete_de_zaun"],
   }),
 
   createFusionCard({
@@ -572,9 +444,11 @@ const fusionCards = [
     characterName: "Mel & LeBlanc",
     rarity: "legendary",
     description: "Une fusion légendaire entre magie révélée et manipulation de la Rose Noire.",
+    image: "https://static.wikia.nocookie.net/arcane/images/0/07/282.png",
     faction: "Noxus / Rose Noire",
-    tags: ["Noxus", "Rose Noire", "Magie"],
-    ingredients: ["mel_legendary_mage_revelee", "leblanc_legendary_rose_noire"],
+    season: "Fusion",
+    tags: ["Noxus","Rose Noire","Magie"],
+    ingredients: ["mel_legendary_mage_revelee","leblanc_legendary_rose_noire"],
   }),
 
   createFusionCard({
@@ -583,56 +457,24 @@ const fusionCards = [
     characterName: "Ambessa & Mel",
     rarity: "legendary",
     description: "Une fusion légendaire du conflit entre amour familial et pouvoir militaire.",
+    image: "https://static.wikia.nocookie.net/arcane/images/e/e5/2829.png",
     faction: "Piltover / Noxus",
-    tags: ["Noxus", "Medarda", "Mel", "Ambessa"],
-    ingredients: ["ambessa_legendary_louve_de_noxus", "mel_legendary_mage_revelee"],
+    season: "Fusion",
+    tags: ["Noxus","Medarda","Mel","Ambessa"],
+    ingredients: ["ambessa_legendary_louve_de_noxus","mel_legendary_mage_revelee"],
   }),
 
-  createFusionCard({
-    key: "fusion_heimerdinger_janna_legendary",
-    name: "Heimerdinger & Janna — Mémoire des siècles",
-    characterName: "Heimerdinger & Janna",
-    rarity: "legendary",
-    description: "Une fusion légendaire de science ancienne et de mythe oublié.",
-    faction: "Piltover / Zaun",
-    tags: ["Yordle", "Janna", "Mythe", "Science"],
-    ingredients: ["heimerdinger_legendary_savant_intemporel", "janna_legendary_deesse_oubliee_de_zaun"],
-  }),
-
-  createFusionCard({
-    key: "fusion_viktor_hexcore_legendary",
-    name: "Viktor & Hexcore — Évolution interdite",
-    characterName: "Viktor & Hexcore",
-    rarity: "legendary",
-    description: "Une fusion légendaire entre l'homme et l'anomalie qui répond à son appel.",
-    faction: "Hextech",
-    tags: ["Hextech", "Hexcore", "Viktor", "Évolution"],
-    ingredients: ["viktor_legendary_apotre_du_progres", "hexcore_legendary_anomalie_arcanique"],
-  }),
-
-  createFusionCard({
-    key: "fusion_singed_orianna_legendary",
-    name: "Singed & Orianna — Cœur préservé",
-    characterName: "Singed & Orianna",
-    rarity: "legendary",
-    description: "Une fusion légendaire du sacrifice scientifique et de l'amour paternel.",
-    faction: "Zaun",
-    tags: ["Zaun", "Singed", "Orianna", "Famille"],
-    ingredients: ["singed_legendary_createur_de_monstres", "orianna_legendary_fille_du_docteur"],
-  }),
-
-  // =========================
-  // FUSIONS MYTHIQUES
-  // =========================
   createFusionCard({
     key: "fusion_jinx_vi_mythic",
     name: "Jinx & Vi — Ce qui reste de nous",
     characterName: "Jinx & Vi",
     rarity: "mythic",
     description: "Une fusion mythique du traumatisme, de la rage et de l'amour qui survit à tout.",
+    image: "https://media1.tenor.com/m/1aq4VHA-_iEAAAAd/jinx-vs-vi-jinx.gif",
     faction: "Zaun",
-    tags: ["Mythique", "Zaun", "Jinx", "Vi", "Famille"],
-    ingredients: ["jinx_mythic_blue_flare", "vi_mythic_protectrice_brisee"],
+    season: "Fusion",
+    tags: ["Mythique","Zaun","Jinx","Vi","Famille"],
+    ingredients: ["jinx_mythic_blue_flare","vi_mythic_protectrice_brisee"],
   }),
 
   createFusionCard({
@@ -641,9 +483,11 @@ const fusionCards = [
     characterName: "Jinx & Ekko",
     rarity: "mythic",
     description: "Une fusion mythique entre chaos, souvenir et secondes volées au destin.",
+    image: "https://media1.tenor.com/m/SbQAq--cHhMAAAAd/jinx-ekko.gif",
     faction: "Zaun / Firelights",
-    tags: ["Mythique", "Jinx", "Ekko", "Temps", "Zaun"],
-    ingredients: ["jinx_mythic_blue_flare", "ekko_mythic_z_drive"],
+    season: "Fusion",
+    tags: ["Mythique","Jinx","Ekko","Temps","Zaun"],
+    ingredients: ["jinx_mythic_blue_flare","ekko_mythic_z_drive"],
   }),
 
   createFusionCard({
@@ -652,9 +496,11 @@ const fusionCards = [
     characterName: "Caitlyn & Vi",
     rarity: "mythic",
     description: "Une fusion mythique entre amour, devoir et fracture politique.",
+    image: "https://media1.tenor.com/m/F_8I7ptFJnsAAAAd/caitlyn-vi-vi-caitlyn.gif",
     faction: "Piltover / Zaun",
-    tags: ["Mythique", "Caitlyn", "Vi", "Justice"],
-    ingredients: ["caitlyn_mythic_il_de_piltover", "vi_mythic_protectrice_brisee"],
+    season: "Fusion",
+    tags: ["Mythique","Caitlyn","Vi","Justice"],
+    ingredients: ["caitlyn_mythic_il_de_piltover","vi_mythic_protectrice_brisee"],
   }),
 
   createFusionCard({
@@ -663,9 +509,11 @@ const fusionCards = [
     characterName: "Jayce & Viktor",
     rarity: "mythic",
     description: "Une fusion mythique de deux destins liés à l'apocalypse Hextech.",
+    image: "https://media1.tenor.com/m/_o8q-SXmUPQAAAAd/jayvik-jayce.gif",
     faction: "Hextech",
-    tags: ["Mythique", "Hextech", "Jayce", "Viktor"],
-    ingredients: ["jayce_mythic_defenseur_brise", "viktor_mythic_glorious_evolution"],
+    season: "Fusion",
+    tags: ["Mythique","Hextech","Jayce","Viktor"],
+    ingredients: ["jayce_mythic_defenseur_brise","viktor_mythic_glorious_evolution"],
   }),
 
   createFusionCard({
@@ -674,9 +522,11 @@ const fusionCards = [
     characterName: "Mel & Ambessa",
     rarity: "mythic",
     description: "Une fusion mythique du pouvoir Medarda entre lumière et conquête.",
+    image: "https://media1.tenor.com/m/zO37NJTCxEkAAAAd/arcane-season-2-mel-vs-ambessa.gif",
     faction: "Noxus / Piltover",
-    tags: ["Mythique", "Noxus", "Medarda", "Magie"],
-    ingredients: ["mel_mythic_lumiere_doree", "ambessa_mythic_matriarche_de_guerre"],
+    season: "Fusion",
+    tags: ["Mythique","Noxus","Medarda","Magie"],
+    ingredients: ["mel_mythic_lumiere_doree","ambessa_mythic_matriarche_de_guerre"],
   }),
 
   createFusionCard({
@@ -685,31 +535,24 @@ const fusionCards = [
     characterName: "Silco & Jinx",
     rarity: "mythic",
     description: "Une fusion mythique du rêve de Zaun et de son symbole le plus explosif.",
+    image: "https://media1.tenor.com/m/x0z4x8S355oAAAAd/silco-jinx.gif",
     faction: "Zaun",
-    tags: ["Mythique", "Zaun", "Silco", "Jinx"],
-    ingredients: ["silco_mythic_reve_de_zaun", "jinx_mythic_blue_flare"],
+    season: "Fusion",
+    tags: ["Mythique","Zaun","Silco","Jinx"],
+    ingredients: ["silco_mythic_reve_de_zaun","jinx_mythic_blue_flare"],
   }),
 
   createFusionCard({
-    key: "fusion_warwick_viktor_mythic",
-    name: "Warwick & Viktor — Humanité dissoute",
+    key: "fusion_mel_leblanc__mythic",
+    name: "Mel  & Leblanc — Corruption Forcée",
     characterName: "Warwick & Viktor",
     rarity: "mythic",
-    description: "Une fusion mythique entre l'évolution forcée et la mémoire d'un homme perdu.",
+    description: "Une fusion mythique entre l'évolution de Mel et la toute puissance de Leblanc.",
+    image: "https://media1.tenor.com/m/Y67e2t5FGJgAAAAd/leblanc-ambessa.gif",
     faction: "Hextech / Zaun",
-    tags: ["Mythique", "Warwick", "Viktor", "Évolution"],
-    ingredients: ["warwick_mythic_vander_eveille", "viktor_mythic_glorious_evolution"],
-  }),
-
-  createFusionCard({
-    key: "fusion_leblanc_ambessa_mythic",
-    name: "LeBlanc & Ambessa — Guerre de la Rose",
-    characterName: "LeBlanc & Ambessa",
-    rarity: "mythic",
-    description: "Une fusion mythique entre la manipulation de la Rose Noire et la force de Noxus.",
-    faction: "Noxus / Rose Noire",
-    tags: ["Mythique", "Noxus", "Rose Noire", "Guerre"],
-    ingredients: ["leblanc_mythic_illusion_de_la_rose", "ambessa_mythic_matriarche_de_guerre"],
+    season: "Fusion",
+    tags: ["Mythique","Warwick","Viktor","Évolution"],
+    ingredients: ["warwick_mythic_vander_eveille","viktor_mythic_glorious_evolution"],
   }),
 
   createFusionCard({
@@ -718,9 +561,11 @@ const fusionCards = [
     characterName: "Isha & Jinx",
     rarity: "mythic",
     description: "Une fusion mythique de sacrifice, d'innocence et de feu bleu.",
+    image: "https://media1.tenor.com/m/Y67e2t5FGJgAAAAd/leblanc-ambessa.gif",
     faction: "Zaun",
-    tags: ["Mythique", "Zaun", "Isha", "Jinx", "Tragédie"],
-    ingredients: ["isha_mythic_sacrifice", "jinx_mythic_blue_flare"],
+    season: "Fusion",
+    tags: ["Mythique","Zaun","Isha","Jinx","Tragédie"],
+    ingredients: ["isha_mythic_sacrifice","jinx_mythic_blue_flare"],
   }),
 ]
 
