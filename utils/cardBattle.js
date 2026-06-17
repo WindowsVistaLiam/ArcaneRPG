@@ -184,7 +184,15 @@ function simulateBattleWithResolvedStats(cardA, statsA, cardB, statsB) {
   const logs = []
   let turn = 1
 
-  let attackerSide = statsA.speed >= statsB.speed ? "A" : "B"
+  let attackerSide = null
+
+if (statsA.speed > statsB.speed) {
+  attackerSide = "A"
+} else if (statsB.speed > statsA.speed) {
+  attackerSide = "B"
+} else {
+  attackerSide = Math.random() < 0.5 ? "A" : "B"
+}
 
   while (hpA > 0 && hpB > 0 && turn <= 40) {
     const attackerCard = attackerSide === "A" ? cardA : cardB
