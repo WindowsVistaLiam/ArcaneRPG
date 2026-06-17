@@ -89,24 +89,24 @@ function buildCardFromPlayerCard(playerCard) {
     return catalogCard
   }
 
-return {
-  key: playerCard.cardKey,
-  name: playerCard.cardName || playerCard.cardKey,
-  characterName: playerCard.characterName || playerCard.cardName || playerCard.cardKey,
-  rarity: playerCard.rarity || "common",
-  rarityLabel: playerCard.rarityLabel || "Commun",
-  value: playerCard.value || 0,
-  image: playerCard.image || "",
-  description: playerCard.description || "",
-  faction: playerCard.faction || "Inconnue",
-  season: playerCard.season || "Fusion",
-  tags: playerCard.tags || [],
-  source: playerCard.source || "player_cards",
-  isPullable: playerCard.isPullable,
-  fusionBonusPercent: playerCard.fusionBonusPercent || 0,
-  ingredients: playerCard.ingredients || [],
-  battleStats: playerCard.battleStats || null,
-}
+  return {
+    key: playerCard.cardKey,
+    name: playerCard.cardName || playerCard.cardKey,
+    characterName: playerCard.characterName || playerCard.cardName || playerCard.cardKey,
+    rarity: playerCard.rarity || "common",
+    rarityLabel: playerCard.rarityLabel || "Commun",
+    value: playerCard.value || 0,
+    image: playerCard.image || "",
+    description: playerCard.description || "",
+    faction: playerCard.faction || "Inconnue",
+    season: playerCard.season || "Fusion",
+    tags: playerCard.tags || [],
+    source: playerCard.source || "player_cards",
+    isPullable: playerCard.isPullable,
+    fusionBonusPercent: playerCard.fusionBonusPercent || 0,
+    ingredients: playerCard.ingredients || [],
+    battleStats: playerCard.battleStats || null,
+  }
 }
 
 function formatRemainingTime(ms) {
@@ -720,12 +720,13 @@ module.exports = {
     const subcommand = interaction.options.getSubcommand()
 
     if (subcommand === "pve") {
+      await interaction.deferReply()
+
       const cooldown = await checkPveCooldown(client, interaction.user.id)
 
       if (!cooldown.allowed) {
-        return interaction.reply({
+        return interaction.editReply({
           content: `⏳ Tu dois attendre encore **${formatRemainingTime(cooldown.remainingMs)}** avant de refaire un combat PVE.`,
-          ephemeral: true,
         })
       }
 
@@ -737,9 +738,8 @@ module.exports = {
       )
 
       if (!resolvedCard.success) {
-        return interaction.reply({
+        return interaction.editReply({
           content: resolvedCard.message,
-          ephemeral: true,
         })
       }
 
@@ -844,7 +844,7 @@ module.exports = {
         enemyStats,
       })
 
-      return interaction.reply({
+      return interaction.editReply({
         embeds: [embed],
       })
     }
@@ -867,6 +867,8 @@ module.exports = {
         })
       }
 
+      await interaction.deferReply()
+
       const resolvedCard = await resolveChosenCombatCard(
         client,
         interaction.user.id,
@@ -874,9 +876,8 @@ module.exports = {
       )
 
       if (!resolvedCard.success) {
-        return interaction.reply({
+        return interaction.editReply({
           content: resolvedCard.message,
-          ephemeral: true,
         })
       }
 
@@ -884,9 +885,8 @@ module.exports = {
       const opponentAutoCard = await getAutoPvpDefenseCard(client, opponent.id)
 
       if (!opponentAutoCard.card) {
-        return interaction.reply({
+        return interaction.editReply({
           content: `❌ ${opponent} ne possède aucune carte et ne peut donc pas combattre.`,
-          ephemeral: true,
         })
       }
 
@@ -935,7 +935,7 @@ module.exports = {
 
       const row = buildPvpButtons(result.insertedId.toString())
 
-      return interaction.reply({
+      return interaction.editReply({
         content: `${opponent}, tu as reçu un défi PVP !`,
         embeds: [embed],
         components: [row],
@@ -1025,6 +1025,8 @@ module.exports = {
     }
 
     if (action === "pvp_accept") {
+      await interaction.deferUpdate()
+
       const challengerCard = getCardFromCatalog(session.challengerCardKey)
 
       if (!challengerCard) {
@@ -1040,7 +1042,7 @@ module.exports = {
           }
         )
 
-        return interaction.update({
+        return interaction.editReply({
           content: "❌ La carte du challenger est introuvable dans le catalogue.",
           embeds: [],
           components: [],
@@ -1066,7 +1068,7 @@ module.exports = {
           }
         )
 
-        return interaction.update({
+        return interaction.editReply({
           content: "❌ Le challenger ne possède plus cette carte. Combat annulé.",
           embeds: [],
           components: [],
@@ -1091,7 +1093,7 @@ module.exports = {
           }
         )
 
-        return interaction.update({
+        return interaction.editReply({
           content: "❌ Le joueur défié ne possède aucune carte. Combat annulé.",
           embeds: [],
           components: [],
@@ -1203,7 +1205,7 @@ module.exports = {
         protectionResult,
       })
 
-      return interaction.update({
+      return interaction.editReply({
         content: "⚔️ Le combat PVP est terminé !",
         embeds: [embed],
         components: [],
