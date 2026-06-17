@@ -1,6 +1,10 @@
 const {
   SlashCommandBuilder,
   EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder,
 } = require("discord.js")
 
 const arcaneCards = require("../../data/arcaneCards")
@@ -11,6 +15,9 @@ const {
 } = require("../../utils/cardBattle")
 
 const EPHEMERAL_FLAG = 64
+
+const ITEMS_PER_PAGE = 5
+const SELECT_ITEMS_PER_PAGE = 25
 
 const RARITY_COLORS = {
   common: 0x95a5a6,
@@ -28,11 +35,29 @@ const RARITY_EMOJIS = {
   mythic: "🔴",
 }
 
+const RARITY_ORDER = {
+  common: 1,
+  rare: 2,
+  epic: 3,
+  legendary: 4,
+  mythic: 5,
+}
+
 function normalizeText(text) {
   return String(text || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+}
+
+function sortFusions(cards) {
+  return [...cards].sort((a, b) => {
+    const rarityDiff = (RARITY_ORDER[a.rarity] || 99) - (RARITY_ORDER[b.rarity] || 99)
+
+    if (rarityDiff !== 0) return rarityDiff
+
+    return a.name.localeCompare(b.name)
+  })
 }
 
 function findFusion(search) {
@@ -79,37 +104,288 @@ function formatIngredient(cardKey, owned) {
   }
 
   const emoji = owned ? "✅" : "❌"
-
   return `${emoji} **${card.name}** \`${card.key}\``
 }
 
-async function userOwnsCard(client, userId, cardKey) {
-  const card = await client.db.collection("player_cards").findOne({
-    userId,
-    cardKey,
-  })
-
-  return Boolean(card)
+function getPageCount(items, perPage) {
+  return Math.max(1, Math.ceil(items.length / perPage))
 }
 
-async function getIngredientsStatus(client, userId, fusionCard) {
-  const status = []
+function clampPage(page, totalPages) {
+  return Math.min(Math.max(page, 0), totalPages - 1)
+}
 
-  for (const ingredientKey of fusionCard.ingredients || []) {
-    const owned = await userOwnsCard(client, userId, ingredientKey)
+async function getOwnedCardKeys(client, userId) {
+  const cards = await client.db.collection("player_cards")
+    .find(
+      { userId },
+      { projection: { cardKey: 1 } }
+    )
+    .toArray()
 
-    status.push({
-      cardKey: ingredientKey,
-      owned,
-      card: getOfficialCard(ingredientKey),
+  return new Set(cards.map((card) => card.cardKey))
+}
+
+function userCanCreateFusion(fusionCard, ownedKeys) {
+  if (ownedKeys.has(fusionCard.key)) return false
+
+  return (fusionCard.ingredients || []).every((ingredientKey) => {
+    return ownedKeys.has(ingredientKey)
+  })
+}
+
+function getAvailableFusions(ownedKeys) {
+  return sortFusions(
+    fusionCards.filter((fusionCard) => userCanCreateFusion(fusionCard, ownedKeys))
+  )
+}
+
+function buildPaginationRow(type, page, totalPages) {
+  const previousButton = new ButtonBuilder()
+    .setCustomId(`fusion:${type}:${page - 1}`)
+    .setLabel("⬅️")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(page <= 0)
+
+  const nextButton = new ButtonBuilder()
+    .setCustomId(`fusion:${type}:${page + 1}`)
+    .setLabel("➡️")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(page >= totalPages - 1)
+
+  return new ActionRowBuilder().addComponents(previousButton, nextButton)
+}
+
+function buildFusionListEmbed({
+  title,
+  description,
+  fusions,
+  page,
+  ownedKeys = null,
+}) {
+  const sortedFusions = sortFusions(fusions)
+  const totalPages = getPageCount(sortedFusions, ITEMS_PER_PAGE)
+  const safePage = clampPage(page, totalPages)
+
+  const start = safePage * ITEMS_PER_PAGE
+  const pageItems = sortedFusions.slice(start, start + ITEMS_PER_PAGE)
+
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(0x9b59b6)
+    .setDescription(description)
+    .setFooter({
+      text: `Page ${safePage + 1}/${totalPages} • ${sortedFusions.length} fusion${sortedFusions.length > 1 ? "s" : ""}`,
+    })
+    .setTimestamp()
+
+  for (const fusionCard of pageItems) {
+    const emoji = RARITY_EMOJIS[fusionCard.rarity] || "🎴"
+
+    const ingredientsText = (fusionCard.ingredients || [])
+      .map((key) => {
+        const card = getOfficialCard(key)
+        const ownedPrefix = ownedKeys ? (ownedKeys.has(key) ? "✅" : "❌") : "•"
+
+        return card
+          ? `${ownedPrefix} ${card.name}`
+          : `${ownedPrefix} ${key}`
+      })
+      .join("\n")
+
+    const alreadyOwnedText = ownedKeys?.has(fusionCard.key)
+      ? "\nDéjà possédée : **Oui**"
+      : ""
+
+    embed.addFields({
+      name: `${emoji} ${fusionCard.name}`,
+      value:
+        `ID : \`${fusionCard.key}\`\n` +
+        `Rareté : **${fusionCard.rarityLabel || fusionCard.rarity}**\n` +
+        `Bonus fusion : **+${fusionCard.fusionBonusPercent || 10}%**${alreadyOwnedText}\n` +
+        `Ingrédients :\n${ingredientsText || "Aucun ingrédient."}`,
+      inline: false,
     })
   }
 
-  return status
+  return {
+    embed,
+    safePage,
+    totalPages,
+  }
 }
 
-async function userOwnsFusion(client, userId, fusionKey) {
-  return userOwnsCard(client, userId, fusionKey)
+async function buildFusionViewEmbed(client, userId, fusionCard) {
+  const ownedKeys = await getOwnedCardKeys(client, userId)
+  const stats = getFusionStats(fusionCard)
+
+  const alreadyOwnsFusion = ownedKeys.has(fusionCard.key)
+
+  const ingredientsText = (fusionCard.ingredients || [])
+    .map((ingredientKey) => {
+      return formatIngredient(ingredientKey, ownedKeys.has(ingredientKey))
+    })
+    .join("\n")
+
+  const canCreate = userCanCreateFusion(fusionCard, ownedKeys)
+
+  const embed = new EmbedBuilder()
+    .setTitle(`🧬 Fusion — ${fusionCard.name}`)
+    .setColor(RARITY_COLORS[fusionCard.rarity] || 0x9b59b6)
+    .setDescription(fusionCard.description || "Carte fusion unique.")
+    .addFields(
+      {
+        name: "Informations",
+        value:
+          `ID : \`${fusionCard.key}\`\n` +
+          `Rareté : **${fusionCard.rarityLabel || fusionCard.rarity}**\n` +
+          `Valeur : **${fusionCard.value || 0} pts**\n` +
+          `Tirable : **Non**\n` +
+          `Bonus fusion : **+${fusionCard.fusionBonusPercent || 10}%**`,
+        inline: false,
+      },
+      {
+        name: "Ingrédients",
+        value: ingredientsText || "Aucun ingrédient.",
+        inline: false,
+      },
+      {
+        name: "Stats de la carte fusion",
+        value: formatStats(stats),
+        inline: false,
+      },
+      {
+        name: "État",
+        value: alreadyOwnsFusion
+          ? "✅ Tu possèdes déjà cette fusion."
+          : canCreate
+            ? "✅ Tu peux créer cette fusion avec `/fusion creer`."
+            : "❌ Il te manque au moins une carte ingrédient.",
+        inline: false,
+      }
+    )
+    .setTimestamp()
+
+  if (fusionCard.image) {
+    embed.setImage(fusionCard.image)
+  }
+
+  return embed
+}
+
+function buildCreateSelectRows(availableFusions, page) {
+  const totalPages = getPageCount(availableFusions, SELECT_ITEMS_PER_PAGE)
+  const safePage = clampPage(page, totalPages)
+
+  const start = safePage * SELECT_ITEMS_PER_PAGE
+  const pageItems = availableFusions.slice(start, start + SELECT_ITEMS_PER_PAGE)
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId(`fusion:create-select:${safePage}`)
+    .setPlaceholder("Choisis la fusion à créer")
+    .addOptions(
+      pageItems.map((fusionCard) => {
+        const emoji = RARITY_EMOJIS[fusionCard.rarity] || "🎴"
+
+        return {
+          label: fusionCard.name.slice(0, 100),
+          description: `${fusionCard.rarityLabel || fusionCard.rarity} • ${fusionCard.ingredients.length} ingrédients`.slice(0, 100),
+          value: fusionCard.key,
+          emoji,
+        }
+      })
+    )
+
+  const rows = [
+    new ActionRowBuilder().addComponents(selectMenu),
+  ]
+
+  if (totalPages > 1) {
+    rows.push(buildPaginationRow("create-page", safePage, totalPages))
+  }
+
+  return {
+    rows,
+    safePage,
+    totalPages,
+  }
+}
+
+function buildCreateMenuEmbed(availableFusions, page) {
+  const totalPages = getPageCount(availableFusions, SELECT_ITEMS_PER_PAGE)
+  const safePage = clampPage(page, totalPages)
+
+  const start = safePage * SELECT_ITEMS_PER_PAGE
+  const pageItems = availableFusions.slice(start, start + SELECT_ITEMS_PER_PAGE)
+
+  const lines = pageItems.map((fusionCard) => {
+    const emoji = RARITY_EMOJIS[fusionCard.rarity] || "🎴"
+    return `${emoji} **${fusionCard.name}** — \`${fusionCard.key}\``
+  })
+
+  return new EmbedBuilder()
+    .setTitle("🧬 Créer une fusion")
+    .setColor(0x9b59b6)
+    .setDescription(
+      "Sélectionne une fusion disponible dans le menu ci-dessous.\n\n" +
+      lines.join("\n")
+    )
+    .setFooter({
+      text: `Page ${safePage + 1}/${totalPages} • ${availableFusions.length} fusion${availableFusions.length > 1 ? "s" : ""} créable${availableFusions.length > 1 ? "s" : ""}`,
+    })
+    .setTimestamp()
+}
+
+function buildConfirmRows(fusionCard) {
+  const confirmButton = new ButtonBuilder()
+    .setCustomId(`fusion:confirm:${fusionCard.key}`)
+    .setLabel("Confirmer la fusion")
+    .setStyle(ButtonStyle.Success)
+
+  const cancelButton = new ButtonBuilder()
+    .setCustomId("fusion:cancel")
+    .setLabel("Annuler")
+    .setStyle(ButtonStyle.Secondary)
+
+  return [
+    new ActionRowBuilder().addComponents(confirmButton, cancelButton),
+  ]
+}
+
+function buildFusionSuccessEmbed(fusionCard, stats) {
+  const emoji = RARITY_EMOJIS[fusionCard.rarity] || "🎴"
+
+  const embed = new EmbedBuilder()
+    .setTitle("✅ Fusion réussie")
+    .setColor(RARITY_COLORS[fusionCard.rarity] || 0x2ecc71)
+    .setDescription(
+      `${emoji} Tu as créé **${fusionCard.name}**.\n\n` +
+      "Les cartes ingrédients ont été consommées.\n" +
+      "Cette fusion est maintenant ta **carte favorite** et donc ta carte de combat par défaut."
+    )
+    .addFields(
+      {
+        name: "Carte obtenue",
+        value:
+          `ID : \`${fusionCard.key}\`\n` +
+          `Rareté : **${fusionCard.rarityLabel || fusionCard.rarity}**\n` +
+          `Valeur : **${fusionCard.value || 0} pts**\n` +
+          `Bonus fusion : **+${fusionCard.fusionBonusPercent || 10}%**`,
+        inline: false,
+      },
+      {
+        name: "Stats",
+        value: formatStats(stats),
+        inline: false,
+      }
+    )
+    .setTimestamp()
+
+  if (fusionCard.image) {
+    embed.setImage(fusionCard.image)
+  }
+
+  return embed
 }
 
 async function consumeIngredientCards(client, userId, ingredientKeys) {
@@ -127,13 +403,10 @@ async function removeFavoriteIfConsumed(client, userId, ingredientKeys) {
   })
 
   if (!profile?.favoriteCardKey) return
-
   if (!ingredientKeys.includes(profile.favoriteCardKey)) return
 
   await client.db.collection("player_profiles").updateOne(
-    {
-      userId,
-    },
+    { userId },
     {
       $unset: {
         favoriteCardKey: "",
@@ -147,9 +420,7 @@ async function removeFavoriteIfConsumed(client, userId, ingredientKeys) {
 
 async function setFusionAsFavorite(client, userId, fusionCardKey) {
   await client.db.collection("player_profiles").updateOne(
-    {
-      userId,
-    },
+    { userId },
     {
       $set: {
         userId,
@@ -160,15 +431,11 @@ async function setFusionAsFavorite(client, userId, fusionCardKey) {
         createdAt: new Date(),
       },
     },
-    {
-      upsert: true,
-    }
+    { upsert: true }
   )
 
   await client.db.collection("player_cards").updateMany(
-    {
-      userId,
-    },
+    { userId },
     {
       $set: {
         favorite: false,
@@ -194,169 +461,100 @@ async function setFusionAsFavorite(client, userId, fusionCardKey) {
 async function addFusionCard(client, userId, fusionCard) {
   const stats = getFusionStats(fusionCard)
 
-  await client.db.collection("player_cards").insertOne({
-    userId,
-    cardKey: fusionCard.key,
-    cardName: fusionCard.name,
-    characterName: fusionCard.characterName,
-    rarity: fusionCard.rarity,
-    rarityLabel: fusionCard.rarityLabel,
-    value: fusionCard.value || 0,
-    image: fusionCard.image || "",
-    description: fusionCard.description || "",
-    faction: fusionCard.faction || "Fusion",
-    season: fusionCard.season || "Fusion",
-    tags: fusionCard.tags || [],
-    source: "fusion",
-    isPullable: false,
-    fusionBonusPercent: fusionCard.fusionBonusPercent || 10,
-    ingredients: fusionCard.ingredients || [],
-    battleStats: {
-      hp: stats.hp,
-      attack: stats.attack,
-      defense: stats.defense,
-      speed: stats.speed,
-      power: stats.power,
+  await client.db.collection("player_cards").updateOne(
+    {
+      userId,
+      cardKey: fusionCard.key,
     },
-    obtainedAt: new Date(),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  })
+    {
+      $setOnInsert: {
+        userId,
+        cardKey: fusionCard.key,
+        cardName: fusionCard.name,
+        characterName: fusionCard.characterName,
+        rarity: fusionCard.rarity,
+        rarityLabel: fusionCard.rarityLabel,
+        value: fusionCard.value || 0,
+        image: fusionCard.image || "",
+        description: fusionCard.description || "",
+        faction: fusionCard.faction || "Fusion",
+        season: fusionCard.season || "Fusion",
+        tags: fusionCard.tags || [],
+        source: "fusion",
+        isPullable: false,
+        fusionBonusPercent: fusionCard.fusionBonusPercent || 10,
+        ingredients: fusionCard.ingredients || [],
+        battleStats: {
+          hp: stats.hp,
+          attack: stats.attack,
+          defense: stats.defense,
+          speed: stats.speed,
+          power: stats.power,
+        },
+        obtainedAt: new Date(),
+        createdAt: new Date(),
+      },
+      $set: {
+        updatedAt: new Date(),
+      },
+    },
+    { upsert: true }
+  )
 }
 
-function buildFusionListEmbed() {
-  const embed = new EmbedBuilder()
-    .setTitle("🧬 Fusions disponibles")
-    .setColor(0x9b59b6)
-    .setDescription(
-      "Les cartes fusion sont des cartes uniques non obtenables en tirage.\n" +
-      "Elles consomment les cartes ingrédients et donnent une carte spéciale avec **+10% de stats** selon sa rareté de base."
-    )
-    .setTimestamp()
+async function createFusionForUser(client, userId, fusionCard) {
+  const ownedKeys = await getOwnedCardKeys(client, userId)
 
-  for (const fusionCard of fusionCards) {
-    const emoji = RARITY_EMOJIS[fusionCard.rarity] || "🧬"
-    const ingredients = (fusionCard.ingredients || [])
-      .map((key) => {
-        const card = getOfficialCard(key)
-        return card ? `• ${card.name}` : `• ${key}`
-      })
+  if (ownedKeys.has(fusionCard.key)) {
+    return {
+      success: false,
+      message: `❌ Tu possèdes déjà cette fusion : **${fusionCard.name}**.`,
+    }
+  }
+
+  const missingIngredients = (fusionCard.ingredients || [])
+    .filter((ingredientKey) => !ownedKeys.has(ingredientKey))
+
+  if (missingIngredients.length > 0) {
+    const missingText = missingIngredients
+      .map((ingredientKey) => formatIngredient(ingredientKey, false))
       .join("\n")
 
-    embed.addFields({
-      name: `${emoji} ${fusionCard.name}`,
-      value:
-        `ID : \`${fusionCard.key}\`\n` +
-        `Rareté : **${fusionCard.rarityLabel || fusionCard.rarity}**\n` +
-        `Bonus fusion : **+${fusionCard.fusionBonusPercent || 10}%**\n` +
-        `Ingrédients :\n${ingredients}`,
-      inline: false,
-    })
+    return {
+      success: false,
+      message:
+        `❌ Tu ne peux pas créer **${fusionCard.name}**.\n\n` +
+        `Cartes manquantes :\n${missingText}`,
+    }
   }
 
-  return embed
-}
+  await consumeIngredientCards(client, userId, fusionCard.ingredients || [])
+  await removeFavoriteIfConsumed(client, userId, fusionCard.ingredients || [])
+  await addFusionCard(client, userId, fusionCard)
+  await setFusionAsFavorite(client, userId, fusionCard.key)
 
-async function buildFusionViewEmbed(client, userId, fusionCard) {
-  const stats = getFusionStats(fusionCard)
-  const ingredientStatus = await getIngredientsStatus(client, userId, fusionCard)
-  const alreadyOwnsFusion = await userOwnsFusion(client, userId, fusionCard.key)
-
-  const ingredientsText = ingredientStatus
-    .map((ingredient) => formatIngredient(ingredient.cardKey, ingredient.owned))
-    .join("\n")
-
-  const canCreate = !alreadyOwnsFusion && ingredientStatus.every((item) => item.owned)
-
-  const embed = new EmbedBuilder()
-    .setTitle(`🧬 Fusion — ${fusionCard.name}`)
-    .setColor(RARITY_COLORS[fusionCard.rarity] || 0x9b59b6)
-    .setDescription(fusionCard.description || "Carte fusion unique.")
-    .addFields(
-      {
-        name: "📌 Informations",
-        value:
-          `ID : \`${fusionCard.key}\`\n` +
-          `Rareté : **${fusionCard.rarityLabel || fusionCard.rarity}**\n` +
-          `Valeur : **${fusionCard.value || 0} pts**\n` +
-          `Tirable : **Non**\n` +
-          `Bonus fusion : **+${fusionCard.fusionBonusPercent || 10}%**`,
-        inline: false,
-      },
-      {
-        name: "📦 Ingrédients",
-        value: ingredientsText || "Aucun ingrédient.",
-        inline: false,
-      },
-      {
-        name: "📊 Stats de la carte fusion",
-        value: formatStats(stats),
-        inline: false,
-      },
-      {
-        name: "✅ État",
-        value: alreadyOwnsFusion
-          ? "Tu possèdes déjà cette fusion."
-          : canCreate
-            ? "Tu peux créer cette fusion avec `/fusion creer`."
-            : "Il te manque au moins une carte ingrédient.",
-        inline: false,
-      }
-    )
-    .setTimestamp()
-
-  if (fusionCard.image) {
-    embed.setImage(fusionCard.image)
+  return {
+    success: true,
   }
-
-  return embed
-}
-
-function buildFusionSuccessEmbed(fusionCard, stats) {
-  const emoji = RARITY_EMOJIS[fusionCard.rarity] || "🧬"
-
-  const embed = new EmbedBuilder()
-    .setTitle("✅ Fusion réussie")
-    .setColor(RARITY_COLORS[fusionCard.rarity] || 0x2ecc71)
-    .setDescription(
-      `${emoji} Tu as créé **${fusionCard.name}**.\n\n` +
-      "Les cartes ingrédients ont été consommées.\n" +
-      "Cette fusion est maintenant ta **carte favorite** et donc ta carte de combat par défaut."
-    )
-    .addFields(
-      {
-        name: "📌 Carte obtenue",
-        value:
-          `ID : \`${fusionCard.key}\`\n` +
-          `Rareté : **${fusionCard.rarityLabel || fusionCard.rarity}**\n` +
-          `Valeur : **${fusionCard.value || 0} pts**\n` +
-          `Bonus fusion : **+${fusionCard.fusionBonusPercent || 10}%**`,
-        inline: false,
-      },
-      {
-        name: "📊 Stats",
-        value: formatStats(stats),
-        inline: false,
-      }
-    )
-    .setTimestamp()
-
-  if (fusionCard.image) {
-    embed.setImage(fusionCard.image)
-  }
-
-  return embed
 }
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("fusion")
     .setDescription("Créer des cartes fusion uniques avec plusieurs cartes")
+
     .addSubcommand((subcommand) =>
       subcommand
         .setName("liste")
-        .setDescription("Voir les fusions disponibles")
+        .setDescription("Voir toutes les cartes fusion")
     )
+
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("disponible")
+        .setDescription("Voir les fusions que tu peux créer maintenant")
+    )
+
     .addSubcommand((subcommand) =>
       subcommand
         .setName("voir")
@@ -368,16 +566,11 @@ module.exports = {
             .setRequired(true)
         )
     )
+
     .addSubcommand((subcommand) =>
       subcommand
         .setName("creer")
-        .setDescription("Créer une carte fusion")
-        .addStringOption((option) =>
-          option
-            .setName("fusion")
-            .setDescription("Nom ou ID de la fusion")
-            .setRequired(true)
-        )
+        .setDescription("Créer une carte fusion via une interface")
     ),
 
   async execute(interaction, client) {
@@ -388,23 +581,59 @@ module.exports = {
     })
 
     if (subcommand === "liste") {
-      const embed = buildFusionListEmbed()
+      const fusions = sortFusions(fusionCards)
+      const { embed, safePage, totalPages } = buildFusionListEmbed({
+        title: "🧬 Toutes les cartes fusion",
+        description:
+          "Les cartes fusion sont des cartes uniques non obtenables en tirage.\n" +
+          "Elles consomment leurs ingrédients et donnent une carte spéciale avec **+10% de stats**.",
+        fusions,
+        page: 0,
+      })
 
       return interaction.editReply({
         embeds: [embed],
+        components: [buildPaginationRow("list", safePage, totalPages)],
       })
     }
 
-    const search = interaction.options.getString("fusion")
-    const fusionCard = findFusion(search)
+    if (subcommand === "disponible") {
+      const ownedKeys = await getOwnedCardKeys(client, interaction.user.id)
+      const availableFusions = getAvailableFusions(ownedKeys)
 
-    if (!fusionCard) {
+      if (!availableFusions.length) {
+        return interaction.editReply({
+          content:
+            "❌ Tu n'as aucune fusion disponible pour le moment.\n" +
+            "Il te manque sûrement une ou plusieurs cartes ingrédients.",
+        })
+      }
+
+      const { embed, safePage, totalPages } = buildFusionListEmbed({
+        title: "✅ Fusions disponibles",
+        description:
+          "Voici les fusions que tu peux créer maintenant avec tes cartes actuelles.",
+        fusions: availableFusions,
+        page: 0,
+        ownedKeys,
+      })
+
       return interaction.editReply({
-        content: `❌ Aucune fusion trouvée pour : **${search}**.`,
+        embeds: [embed],
+        components: [buildPaginationRow("available", safePage, totalPages)],
       })
     }
 
     if (subcommand === "voir") {
+      const search = interaction.options.getString("fusion")
+      const fusionCard = findFusion(search)
+
+      if (!fusionCard) {
+        return interaction.editReply({
+          content: `❌ Aucune fusion trouvée pour : **${search}**.`,
+        })
+      }
+
       const embed = await buildFusionViewEmbed(
         client,
         interaction.user.id,
@@ -417,64 +646,183 @@ module.exports = {
     }
 
     if (subcommand === "creer") {
-      const alreadyOwnsFusion = await userOwnsFusion(
-        client,
-        interaction.user.id,
-        fusionCard.key
-      )
+      const ownedKeys = await getOwnedCardKeys(client, interaction.user.id)
+      const availableFusions = getAvailableFusions(ownedKeys)
 
-      if (alreadyOwnsFusion) {
+      if (!availableFusions.length) {
         return interaction.editReply({
-          content: `❌ Tu possèdes déjà cette fusion : **${fusionCard.name}**.`,
+          content:
+            "❌ Tu ne peux créer aucune fusion pour le moment.\n" +
+            "Utilise `/fusion liste` pour voir les ingrédients nécessaires.",
         })
       }
 
-      const ingredientStatus = await getIngredientsStatus(
+      const embed = buildCreateMenuEmbed(availableFusions, 0)
+      const { rows } = buildCreateSelectRows(availableFusions, 0)
+
+      return interaction.editReply({
+        embeds: [embed],
+        components: rows,
+      })
+    }
+  },
+
+  async handleButton(interaction, client) {
+    if (!interaction.customId.startsWith("fusion:")) return
+
+    const parts = interaction.customId.split(":")
+    const action = parts[1]
+
+    if (action === "list") {
+      const page = Number(parts[2] || 0)
+      const fusions = sortFusions(fusionCards)
+
+      const { embed, safePage, totalPages } = buildFusionListEmbed({
+        title: "🧬 Toutes les cartes fusion",
+        description:
+          "Les cartes fusion sont des cartes uniques non obtenables en tirage.\n" +
+          "Elles consomment leurs ingrédients et donnent une carte spéciale avec **+10% de stats**.",
+        fusions,
+        page,
+      })
+
+      return interaction.update({
+        embeds: [embed],
+        components: [buildPaginationRow("list", safePage, totalPages)],
+      })
+    }
+
+    if (action === "available") {
+      const page = Number(parts[2] || 0)
+      const ownedKeys = await getOwnedCardKeys(client, interaction.user.id)
+      const availableFusions = getAvailableFusions(ownedKeys)
+
+      if (!availableFusions.length) {
+        return interaction.update({
+          content: "❌ Tu n'as plus aucune fusion disponible.",
+          embeds: [],
+          components: [],
+        })
+      }
+
+      const { embed, safePage, totalPages } = buildFusionListEmbed({
+        title: "✅ Fusions disponibles",
+        description:
+          "Voici les fusions que tu peux créer maintenant avec tes cartes actuelles.",
+        fusions: availableFusions,
+        page,
+        ownedKeys,
+      })
+
+      return interaction.update({
+        embeds: [embed],
+        components: [buildPaginationRow("available", safePage, totalPages)],
+      })
+    }
+
+    if (action === "create-page") {
+      const page = Number(parts[2] || 0)
+      const ownedKeys = await getOwnedCardKeys(client, interaction.user.id)
+      const availableFusions = getAvailableFusions(ownedKeys)
+
+      if (!availableFusions.length) {
+        return interaction.update({
+          content: "❌ Tu n'as plus aucune fusion disponible.",
+          embeds: [],
+          components: [],
+        })
+      }
+
+      const embed = buildCreateMenuEmbed(availableFusions, page)
+      const { rows } = buildCreateSelectRows(availableFusions, page)
+
+      return interaction.update({
+        embeds: [embed],
+        components: rows,
+      })
+    }
+
+    if (action === "confirm") {
+      await interaction.deferUpdate()
+
+      const fusionKey = parts.slice(2).join(":")
+      const fusionCard = fusionCards.find((card) => card.key === fusionKey)
+
+      if (!fusionCard) {
+        return interaction.editReply({
+          content: "❌ Cette fusion n'existe plus.",
+          embeds: [],
+          components: [],
+        })
+      }
+
+      const result = await createFusionForUser(
         client,
         interaction.user.id,
         fusionCard
       )
 
-      const missingIngredients = ingredientStatus.filter((item) => !item.owned)
-
-      if (missingIngredients.length > 0) {
-        const missingText = missingIngredients
-          .map((item) => formatIngredient(item.cardKey, false))
-          .join("\n")
-
+      if (!result.success) {
         return interaction.editReply({
-          content:
-            `❌ Tu ne peux pas créer **${fusionCard.name}**.\n\n` +
-            `Cartes manquantes :\n${missingText}`,
+          content: result.message,
+          embeds: [],
+          components: [],
         })
       }
-
-      await consumeIngredientCards(
-        client,
-        interaction.user.id,
-        fusionCard.ingredients || []
-      )
-
-      await removeFavoriteIfConsumed(
-        client,
-        interaction.user.id,
-        fusionCard.ingredients || []
-      )
-
-      await addFusionCard(client, interaction.user.id, fusionCard)
-
-      await setFusionAsFavorite(
-        client,
-        interaction.user.id,
-        fusionCard.key
-      )
 
       const stats = getFusionStats(fusionCard)
       const embed = buildFusionSuccessEmbed(fusionCard, stats)
 
       return interaction.editReply({
+        content: "",
         embeds: [embed],
+        components: [],
       })
     }
+
+    if (action === "cancel") {
+      return interaction.update({
+        content: "Fusion annulée.",
+        embeds: [],
+        components: [],
+      })
+    }
+  },
+
+  async handleSelect(interaction, client) {
+    if (!interaction.customId.startsWith("fusion:create-select:")) return
+
+    await interaction.deferUpdate()
+
+    const fusionKey = interaction.values[0]
+    const fusionCard = fusionCards.find((card) => card.key === fusionKey)
+
+    if (!fusionCard) {
+      return interaction.editReply({
+        content: "❌ Cette fusion n'existe plus.",
+        embeds: [],
+        components: [],
+      })
+    }
+
+    const embed = await buildFusionViewEmbed(
+      client,
+      interaction.user.id,
+      fusionCard
+    )
+
+    embed.addFields({
+      name: "Confirmation",
+      value:
+        "Clique sur **Confirmer la fusion** pour consommer les ingrédients et créer cette carte.\n" +
+        "Cette action est définitive.",
+      inline: false,
+    })
+
+    return interaction.editReply({
+      content: "",
+      embeds: [embed],
+      components: buildConfirmRows(fusionCard),
+    })
   },
 }
