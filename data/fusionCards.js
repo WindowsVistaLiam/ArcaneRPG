@@ -483,7 +483,7 @@ const fusionCards = [
     characterName: "Jinx & Ekko",
     rarity: "mythic",
     description: "Une fusion mythique entre chaos, souvenir et secondes volées au destin.",
-    image: "https://media1.tenor.com/m/SbQAq--cHhMAAAAd/jinx-ekko.gif",
+    image: "https://64.media.tumblr.com/b883e15a57446e15a10d50990c447bd6/843e0f3f4cde144f-96/s540x810/67c08a6bc2950d48d5663f8d3e62ec71113b130c.gif",
     faction: "Zaun / Firelights",
     season: "Fusion",
     tags: ["Mythique","Jinx","Ekko","Temps","Zaun"],
