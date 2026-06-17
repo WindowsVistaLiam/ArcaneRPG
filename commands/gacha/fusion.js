@@ -274,7 +274,9 @@ function buildAvailableFusionsEmbed({ availableFusions, page, ownedKeys }) {
   const embed = new EmbedBuilder()
     .setTitle("✅ Fusions disponibles")
     .setColor(0x2ecc71)
-    .setDescription("Voici les fusions que tu peux créer maintenant avec tes cartes actuelles.")
+    .setDescription(
+      "Voici les fusions que tu peux créer maintenant avec tes cartes actuelles, en excluant celles que tu possèdes déjà."
+    )
     .setFooter({
       text: `Page ${safePage + 1}/${totalPages} • ${availableFusions.length} fusion${availableFusions.length > 1 ? "s" : ""} disponible${availableFusions.length > 1 ? "s" : ""}`,
     })
@@ -453,7 +455,7 @@ function buildFusionSuccessEmbed(fusionCard, stats) {
     .setDescription(
       `${emoji} Tu as créé **${fusionCard.name}**.\n\n` +
       "Les cartes nécessaires ont été consommées.\n" +
-      "Cette fusion est maintenant ta **carte favorite** et donc ta carte de combat par défaut."
+      "Cette fusion a été ajoutée à ton inventaire."
     )
     .addFields(
       {
@@ -486,27 +488,6 @@ async function consumeIngredientCards(client, userId, ingredientKeys) {
       cardKey,
     })
   }
-}
-
-async function removeFavoriteIfConsumed(client, userId, ingredientKeys) {
-  const profile = await client.db.collection("player_profiles").findOne({
-    userId,
-  })
-
-  if (!profile?.favoriteCardKey) return
-  if (!ingredientKeys.includes(profile.favoriteCardKey)) return
-
-  await client.db.collection("player_profiles").updateOne(
-    { userId },
-    {
-      $unset: {
-        favoriteCardKey: "",
-      },
-      $set: {
-        updatedAt: new Date(),
-      },
-    }
-  )
 }
 
 async function setFusionAsFavorite(client, userId, fusionCardKey) {
@@ -582,6 +563,7 @@ async function addFusionCard(client, userId, fusionCard) {
           speed: stats.speed,
           power: stats.power,
         },
+        favorite: false,
         obtainedAt: new Date(),
         createdAt: new Date(),
       },
@@ -619,13 +601,29 @@ async function createFusionForUser(client, userId, fusionCard) {
     }
   }
 
-  await consumeIngredientCards(client, userId, fusionCard.ingredients || [])
-  await removeFavoriteIfConsumed(client, userId, fusionCard.ingredients || [])
+  const profile = await client.db.collection("player_profiles").findOne({
+    userId,
+  })
+
+  const currentFavoriteKey = profile?.favoriteCardKey || null
+  const ingredients = fusionCard.ingredients || []
+  const favoriteWasConsumed = currentFavoriteKey && ingredients.includes(currentFavoriteKey)
+
+  await consumeIngredientCards(client, userId, ingredients)
   await addFusionCard(client, userId, fusionCard)
-  await setFusionAsFavorite(client, userId, fusionCard.key)
+
+  if (favoriteWasConsumed) {
+    await setFusionAsFavorite(client, userId, fusionCard.key)
+
+    return {
+      success: true,
+      favoriteChanged: true,
+    }
+  }
 
   return {
     success: true,
+    favoriteChanged: false,
   }
 }
 
@@ -719,7 +717,7 @@ module.exports = {
         return interaction.editReply({
           content:
             "❌ Tu n'as aucune fusion disponible pour le moment.\n" +
-            "Il te manque sûrement une ou plusieurs cartes nécessaires.",
+            "Il te manque sûrement une ou plusieurs cartes nécessaires, ou tu possèdes déjà les fusions possibles.",
         })
       }
 
@@ -890,6 +888,24 @@ module.exports = {
 
       const stats = getFusionStats(fusionCard)
       const embed = buildFusionSuccessEmbed(fusionCard, stats)
+
+      if (result.favoriteChanged) {
+        embed.addFields({
+          name: "Carte favorite",
+          value:
+            "Ta carte favorite précédente a été consommée pendant la fusion.\n" +
+            "La nouvelle carte fusion est donc devenue ta carte favorite.",
+          inline: false,
+        })
+      } else {
+        embed.addFields({
+          name: "Carte favorite",
+          value:
+            "Ta carte favorite actuelle a été conservée.\n" +
+            "Tu peux changer de favorite avec `/favori` si tu veux utiliser cette fusion en combat.",
+          inline: false,
+        })
+      }
 
       return interaction.editReply({
         content: "",
