@@ -4,6 +4,7 @@ const {
 } = require("discord.js")
 
 const arcaneCards = require("../../data/arcaneCards")
+const fusionCards = require("../../data/fusionCards")
 
 const {
   getCardStats,
@@ -12,6 +13,8 @@ const {
   LEVEL_MULTIPLIERS,
   MAX_LEVEL,
 } = require("../../utils/cardBattle")
+
+const allCards = [...arcaneCards, ...fusionCards]
 
 const RARITY_COLORS = {
   common: 0x95a5a6,
@@ -39,13 +42,13 @@ function normalizeText(text) {
 function findCard(search) {
   const query = normalizeText(search)
 
-  const exactKey = arcaneCards.find((card) => normalizeText(card.key) === query)
+  const exactKey = allCards.find((card) => normalizeText(card.key) === query)
   if (exactKey) return exactKey
 
-  const exactName = arcaneCards.find((card) => normalizeText(card.name) === query)
+  const exactName = allCards.find((card) => normalizeText(card.name) === query)
   if (exactName) return exactName
 
-  return arcaneCards.find((card) => {
+  return allCards.find((card) => {
     return (
       normalizeText(card.key).includes(query) ||
       normalizeText(card.name).includes(query) ||
@@ -55,13 +58,36 @@ function findCard(search) {
   })
 }
 
-async function userOwnsCard(client, userId, cardKey) {
-  const card = await client.db.collection("player_cards").findOne({
+async function getOwnedPlayerCard(client, userId, cardKey) {
+  return client.db.collection("player_cards").findOne({
     userId,
     cardKey,
   })
+}
 
-  return Boolean(card)
+function buildCardFromOwnedCard(catalogCard, ownedCard) {
+  if (catalogCard) {
+    return catalogCard
+  }
+
+  return {
+    key: ownedCard.cardKey,
+    name: ownedCard.cardName || ownedCard.name || ownedCard.characterName || ownedCard.cardKey,
+    characterName: ownedCard.characterName || ownedCard.cardName || ownedCard.cardKey,
+    rarity: ownedCard.rarity || "common",
+    rarityLabel: ownedCard.rarityLabel || "Commun",
+    value: ownedCard.value || 0,
+    image: ownedCard.image || "",
+    description: ownedCard.description || "",
+    faction: ownedCard.faction || "Inconnue",
+    season: ownedCard.season || "Inconnue",
+    tags: ownedCard.tags || [],
+    source: ownedCard.source || "player_cards",
+    isPullable: ownedCard.isPullable,
+    fusionBonusPercent: ownedCard.fusionBonusPercent || 0,
+    ingredients: ownedCard.ingredients || [],
+    battleStats: ownedCard.battleStats || null,
+  }
 }
 
 async function setFavoriteCard(client, userId, cardKey) {
@@ -178,7 +204,16 @@ function formatStatDiff(baseStats, upgradedStats) {
 
 function buildFavoriteEmbed(user, card, baseStats, upgradedStats, upgrade) {
   const emoji = RARITY_EMOJIS[card.rarity] || "🎴"
-  const bonusPercent = getGlobalBonusPercent(upgrade.level || 1)
+  const safeUpgrade = upgrade || {
+    level: 1,
+    hpBonus: 0,
+    attackBonus: 0,
+    defenseBonus: 0,
+    speedBonus: 0,
+  }
+
+  const bonusPercent = getGlobalBonusPercent(safeUpgrade.level || 1)
+  const sourceText = card.source === "fusion" ? "🧬 Carte fusion" : "🎴 Carte Arcane"
 
   const embed = new EmbedBuilder()
     .setTitle("⭐ Carte favorite définie")
@@ -189,8 +224,9 @@ function buildFavoriteEmbed(user, card, baseStats, upgradedStats, upgrade) {
     )
     .addFields(
       {
-        name: "📌 Carte",
+        name: "🎴 Carte",
         value:
+          `Type : **${sourceText}**\n` +
           `ID : \`${card.key}\`\n` +
           `Rareté : **${card.rarityLabel || card.rarity}**\n` +
           `Valeur : **${card.value || 0} pts**`,
@@ -199,18 +235,18 @@ function buildFavoriteEmbed(user, card, baseStats, upgradedStats, upgrade) {
       {
         name: "⚙️ Amélioration",
         value:
-          `Niveau : **${upgrade.level || 1}/${MAX_LEVEL}**\n` +
+          `Niveau : **${safeUpgrade.level || 1}/${MAX_LEVEL}**\n` +
           `Bonus global : **+${bonusPercent}%**\n` +
-          `Bonus spécifiques : ❤️ +${upgrade.hpBonus || 0} / ⚔️ +${upgrade.attackBonus || 0} / 🛡️ +${upgrade.defenseBonus || 0} / 💨 +${upgrade.speedBonus || 0}`,
+          `Bonus spécifiques : ❤️ +${safeUpgrade.hpBonus || 0} / ⚔️ +${safeUpgrade.attackBonus || 0} / 🛡️ +${safeUpgrade.defenseBonus || 0} / 💨 +${safeUpgrade.speedBonus || 0}`,
         inline: false,
       },
       {
-        name: "📉 Stats de base",
+        name: "📊 Stats de base",
         value: formatStats(baseStats),
         inline: true,
       },
       {
-        name: "📈 Stats en combat",
+        name: "⚔️ Stats en combat",
         value: formatStats(upgradedStats),
         inline: true,
       },
@@ -236,6 +272,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("favori")
     .setDescription("Choisir ou retirer ta carte favorite")
+
     .addSubcommand((subcommand) =>
       subcommand
         .setName("carte")
@@ -247,6 +284,7 @@ module.exports = {
             .setRequired(true)
         )
     )
+
     .addSubcommand((subcommand) =>
       subcommand
         .setName("retirer")
@@ -262,30 +300,36 @@ module.exports = {
       return interaction.reply({
         content:
           "✅ Ta carte favorite a été retirée.\n" +
-          "⚠️ Tu devras maintenant préciser une carte dans `/combat`, ou redéfinir une favorite avec `/favori carte:<nom>`.",
+          "⚠️ Tu devras maintenant préciser une carte dans `/combat`, ou redéfinir une favorite avec `/favori carte:`.",
         ephemeral: true,
       })
     }
 
     if (subcommand === "carte") {
       const search = interaction.options.getString("carte")
-      const card = findCard(search)
+      const catalogCard = findCard(search)
 
-      if (!card) {
+      if (!catalogCard) {
         return interaction.reply({
           content: `❌ Aucune carte trouvée pour : **${search}**.`,
           ephemeral: true,
         })
       }
 
-      const ownsCard = await userOwnsCard(client, interaction.user.id, card.key)
+      const ownedCard = await getOwnedPlayerCard(
+        client,
+        interaction.user.id,
+        catalogCard.key
+      )
 
-      if (!ownsCard) {
+      if (!ownedCard) {
         return interaction.reply({
-          content: `❌ Tu ne possèdes pas cette carte : **${card.name}**.`,
+          content: `❌ Tu ne possèdes pas cette carte : **${catalogCard.name}**.`,
           ephemeral: true,
         })
       }
+
+      const card = buildCardFromOwnedCard(catalogCard, ownedCard)
 
       await setFavoriteCard(client, interaction.user.id, card.key)
 

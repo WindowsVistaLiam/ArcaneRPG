@@ -8,6 +8,9 @@ const {
 } = require("discord.js")
 
 const arcaneCards = require("../../data/arcaneCards")
+const fusionCards = require("../../data/fusionCards")
+
+const allCards = [...arcaneCards, ...fusionCards]
 
 const PAGE_SIZE = 10
 
@@ -28,7 +31,7 @@ const RARITY_EMOJIS = {
 }
 
 function normalizeText(text) {
-  return String(text)
+  return String(text || "")
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -37,7 +40,13 @@ function normalizeText(text) {
 function findCard(search) {
   const query = normalizeText(search)
 
-  return arcaneCards.find((card) => {
+  const exactKey = allCards.find((card) => normalizeText(card.key) === query)
+  if (exactKey) return exactKey
+
+  const exactName = allCards.find((card) => normalizeText(card.name) === query)
+  if (exactName) return exactName
+
+  return allCards.find((card) => {
     return (
       normalizeText(card.key).includes(query) ||
       normalizeText(card.name).includes(query) ||
@@ -45,6 +54,10 @@ function findCard(search) {
       normalizeText(card.characterKey || "").includes(query)
     )
   })
+}
+
+function getCardFromCatalog(cardKey) {
+  return allCards.find((card) => card.key === cardKey)
 }
 
 function sortCards(cards) {
@@ -57,6 +70,26 @@ function sortCards(cards) {
 
     return a.name.localeCompare(b.name)
   })
+}
+
+function buildCardDataFromPlayerCard(playerCard) {
+  const catalogCard = getCardFromCatalog(playerCard.cardKey)
+
+  if (catalogCard) {
+    return catalogCard
+  }
+
+  return {
+    key: playerCard.cardKey,
+    name: playerCard.cardName || playerCard.name || playerCard.characterName || playerCard.cardKey,
+    characterName: playerCard.characterName || playerCard.cardName || playerCard.cardKey,
+    rarity: playerCard.rarity || "common",
+    rarityLabel: playerCard.rarityLabel || "Commun",
+    value: playerCard.value || 0,
+    image: playerCard.image || "",
+    description: playerCard.description || "",
+    source: playerCard.source || "unknown",
+  }
 }
 
 async function addPoints(client, userId, amount) {
@@ -117,7 +150,7 @@ async function removePoints(client, userId, amount) {
 }
 
 function buildAdminCatalogueEmbed(page = 0) {
-  const cards = sortCards(arcaneCards)
+  const cards = sortCards(allCards)
   const totalPages = Math.max(1, Math.ceil(cards.length / PAGE_SIZE))
   const safePage = Math.min(Math.max(page, 0), totalPages - 1)
 
@@ -128,10 +161,12 @@ function buildAdminCatalogueEmbed(page = 0) {
     .map((card, index) => {
       const number = start + index + 1
       const emoji = RARITY_EMOJIS[card.rarity] || "⚪"
+      const sourceText = card.source === "fusion" ? "🧬 Fusion" : "🎴 Carte classique"
 
       return [
         `**${number}. ${emoji} ${card.name}**`,
         `ID : \`${card.key}\``,
+        `Type : **${sourceText}**`,
         `Rareté : **${card.rarityLabel || card.rarity}** — Valeur : **${card.value || 0} pts**`,
       ].join("\n")
     })
@@ -148,13 +183,18 @@ function buildAdminCatalogueEmbed(page = 0) {
         inline: true,
       },
       {
+        name: "Cartes fusion",
+        value: `${fusionCards.length}`,
+        inline: true,
+      },
+      {
         name: "Page",
         value: `${safePage + 1}/${totalPages}`,
         inline: true,
       }
     )
     .setFooter({
-      text: "Utilise l'ID exact pour ajouter ou supprimer une carte.",
+      text: "Utilise l'ID exact ou le nom de la carte pour ajouter ou supprimer une carte.",
     })
     .setTimestamp()
 
@@ -200,15 +240,7 @@ async function buildAdminPlayerCollectionEmbed(client, user, page = 0) {
   const grouped = new Map()
 
   for (const playerCard of playerCards) {
-    const catalogCard = arcaneCards.find((card) => card.key === playerCard.cardKey)
-
-    const cardData = catalogCard || {
-      key: playerCard.cardKey,
-      name: playerCard.cardName || playerCard.cardKey,
-      rarity: playerCard.rarity || "common",
-      rarityLabel: playerCard.rarityLabel || "Commun",
-      value: playerCard.value || 0,
-    }
+    const cardData = buildCardDataFromPlayerCard(playerCard)
 
     if (!grouped.has(cardData.key)) {
       grouped.set(cardData.key, {
@@ -221,8 +253,7 @@ async function buildAdminPlayerCollectionEmbed(client, user, page = 0) {
   }
 
   const groupedCards = Array.from(grouped.values()).sort((a, b) => {
-    const rarityDiff =
-      (RARITY_ORDER[a.card.rarity] || 99) - (RARITY_ORDER[b.card.rarity] || 99)
+    const rarityDiff = (RARITY_ORDER[a.card.rarity] || 99) - (RARITY_ORDER[b.card.rarity] || 99)
 
     if (rarityDiff !== 0) {
       return rarityDiff
@@ -239,7 +270,10 @@ async function buildAdminPlayerCollectionEmbed(client, user, page = 0) {
 
   const totalCards = playerCards.length
   const uniqueCards = groupedCards.length
-  const totalValue = playerCards.reduce((sum, card) => sum + (card.value || 0), 0)
+  const totalValue = playerCards.reduce((sum, card) => {
+    const catalogCard = getCardFromCatalog(card.cardKey)
+    return sum + (catalogCard?.value || card.value || 0)
+  }, 0)
 
   const description = pageCards
     .map((entry, index) => {
@@ -247,10 +281,12 @@ async function buildAdminPlayerCollectionEmbed(client, user, page = 0) {
       const card = entry.card
       const emoji = RARITY_EMOJIS[card.rarity] || "⚪"
       const countText = entry.count > 1 ? ` x${entry.count}` : ""
+      const sourceText = card.source === "fusion" ? "🧬 Fusion" : "🎴 Carte classique"
 
       return [
         `**${number}. ${emoji} ${card.name}${countText}**`,
         `ID : \`${card.key}\``,
+        `Type : **${sourceText}**`,
         `Rareté : **${card.rarityLabel || card.rarity}** — Valeur : **${card.value || 0} pts**`,
       ].join("\n")
     })
@@ -288,7 +324,7 @@ async function buildAdminPlayerCollectionEmbed(client, user, page = 0) {
       }
     )
     .setFooter({
-      text: "Utilise l'ID exact pour supprimer une carte.",
+      text: "Utilise l'ID exact ou le nom de la carte pour supprimer une carte.",
     })
     .setTimestamp()
 
@@ -313,6 +349,33 @@ function buildAdminButtons(type, page, totalPages, userId = "none") {
     .setDisabled(page >= totalPages - 1)
 
   return new ActionRowBuilder().addComponents(previous, next)
+}
+
+async function addCardToPlayer(client, user, card, adminId) {
+  await client.db.collection("player_cards").insertOne({
+    userId: user.id,
+    cardKey: card.key,
+    cardName: card.name,
+    characterName: card.characterName || card.name,
+    rarity: card.rarity,
+    rarityLabel: card.rarityLabel || card.rarity,
+    value: card.value || 0,
+    image: card.image || "",
+    description: card.description || "",
+    faction: card.faction || "Inconnue",
+    season: card.season || "Inconnue",
+    tags: card.tags || [],
+    source: card.source || "admin",
+    isPullable: card.isPullable,
+    fusionBonusPercent: card.fusionBonusPercent || 0,
+    ingredients: card.ingredients || [],
+    battleStats: card.battleStats || null,
+    addedBy: adminId,
+    claimedAt: new Date(),
+    obtainedAt: new Date(),
+    favorite: false,
+    locked: false,
+  })
 }
 
 module.exports = {
@@ -429,7 +492,6 @@ module.exports = {
 
     if (subcommand === "voir-joueur") {
       const user = interaction.options.getUser("utilisateur")
-
       const result = await buildAdminPlayerCollectionEmbed(client, user, 0)
       const row = buildAdminButtons("joueur", result.page, result.totalPages, user.id)
 
@@ -459,26 +521,14 @@ module.exports = {
 
       if (existingCard) {
         return interaction.reply({
-          content: `❌ ${user} possède déjà **${card.name}**. Si tu veux compenser, utilise plutôt \`/admincollection ajouter-points\`.`,
+          content:
+            `❌ ${user} possède déjà **${card.name}**.\n` +
+            "Si tu veux compenser, utilise plutôt `/admincollection ajouter-points`.",
           ephemeral: true,
         })
       }
 
-      await client.db.collection("player_cards").insertOne({
-        userId: user.id,
-        cardKey: card.key,
-        cardName: card.name,
-        rarity: card.rarity,
-        rarityLabel: card.rarityLabel,
-        value: card.value,
-        image: card.image,
-        description: card.description || "",
-        source: "admin",
-        addedBy: interaction.user.id,
-        claimedAt: new Date(),
-        favorite: false,
-        locked: false,
-      })
+      await addCardToPlayer(client, user, card, interaction.user.id)
 
       const embed = new EmbedBuilder()
         .setTitle("✅ Carte ajoutée")
@@ -489,6 +539,11 @@ module.exports = {
             name: "ID",
             value: `\`${card.key}\``,
             inline: false,
+          },
+          {
+            name: "Type",
+            value: card.source === "fusion" ? "🧬 Carte fusion" : "🎴 Carte classique",
+            inline: true,
           },
           {
             name: "Rareté",
@@ -537,6 +592,26 @@ module.exports = {
         })
       }
 
+      const profile = await client.db.collection("player_profiles").findOne({
+        userId: user.id,
+      })
+
+      if (profile?.favoriteCardKey === card.key) {
+        await client.db.collection("player_profiles").updateOne(
+          {
+            userId: user.id,
+          },
+          {
+            $unset: {
+              favoriteCardKey: "",
+            },
+            $set: {
+              updatedAt: new Date(),
+            },
+          }
+        )
+      }
+
       return interaction.reply({
         content: `✅ Carte supprimée de l'inventaire de ${user} : **${card.name}**.\nID : \`${card.key}\``,
         ephemeral: true,
@@ -558,7 +633,6 @@ module.exports = {
     if (subcommand === "retirer-points") {
       const user = interaction.options.getUser("utilisateur")
       const amount = interaction.options.getInteger("montant")
-
       const result = await removePoints(client, user.id, amount)
 
       return interaction.reply({
