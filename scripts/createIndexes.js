@@ -74,6 +74,11 @@ async function main() {
         { characterId: 1, voterUserId: 1 },
         { unique: true }
       ),
+
+      db.collection("daily_cooldowns").createIndex(
+        { userId: 1 },
+        { unique: true }
+      ),
     ])
 
     console.log("✅ Index MongoDB créés avec succès.")

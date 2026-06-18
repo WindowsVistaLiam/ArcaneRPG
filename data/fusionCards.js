@@ -1,4 +1,4 @@
-const FUSION_INFO = {
+  const FUSION_INFO = {
   common: { label: "Fusion commune", value: 30 },
   rare: { label: "Fusion rare", value: 120 },
   epic: { label: "Fusion épique", value: 360 },
@@ -67,7 +67,7 @@ const fusionCards = [
     characterName: "Vi & Caitlyn",
     rarity: "common",
     description: "Une carte fusion unique représentant le premier lien entre Zaun et Piltover.",
-    image: "https://static.wikia.nocookie.net/arcane/images/c/cf/Caitvi_Prison.jpg",
+    image: "https://media.discordapp.net/attachments/1515074537564405831/1517263157737820250/image.png",
     faction: "Piltover / Zaun",
     season: "Fusion",
     tags: ["Piltover","Zaun","Vi","Caitlyn"],
