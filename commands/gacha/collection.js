@@ -11,7 +11,7 @@ const fusionCards = require("../../data/fusionCards")
 
 const allCards = [...arcaneCards, ...fusionCards]
 
-const PAGE_SIZE = 9
+const LIST_PAGE_SIZE = 15
 
 const RARITY_ORDER = {
   mythic: 1,
@@ -19,6 +19,14 @@ const RARITY_ORDER = {
   epic: 3,
   rare: 4,
   common: 5,
+}
+
+const RARITY_COLORS = {
+  common: 0x95a5a6,
+  rare: 0x3498db,
+  epic: 0x9b59b6,
+  legendary: 0xf1c40f,
+  mythic: 0xe74c3c,
 }
 
 const RARITY_EMOJIS = {
@@ -29,7 +37,7 @@ const RARITY_EMOJIS = {
   mythic: "🔴",
 }
 
-const IMAGE_RARITIES = new Set(["legendary", "mythic"])
+const FEATURED_RARITIES = new Set(["mythic", "legendary"])
 
 function getCardFromCatalog(cardKey) {
   return allCards.find((card) => card.key === cardKey)
@@ -73,7 +81,13 @@ function getCardImage(cardKey, playerCard = null) {
 function getCardDescription(cardKey, playerCard = null) {
   const card = getCardFromCatalog(cardKey)
 
-  return card?.description || playerCard?.description || ""
+  return card?.description || playerCard?.description || "Carte de collection."
+}
+
+function getCardSource(cardKey, playerCard = null) {
+  const card = getCardFromCatalog(cardKey)
+
+  return card?.source || playerCard?.source || "arcane"
 }
 
 async function getWallet(client, userId) {
@@ -91,13 +105,70 @@ function buildCardLine(entry) {
   return `${emoji} **${entry.name}**${duplicateText} — ${entry.rarityLabel}`
 }
 
-function buildImageEmbed(entry, user) {
+function groupPlayerCards(playerCards) {
+  const grouped = new Map()
+
+  for (const playerCard of playerCards) {
+    const key = playerCard.cardKey
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        cardKey: key,
+        count: 0,
+        name: formatCardName(key, playerCard),
+        rarity: getRarity(key, playerCard),
+        rarityLabel: getRarityLabel(key, playerCard),
+        value: getCardValue(key, playerCard),
+        image: getCardImage(key, playerCard),
+        description: getCardDescription(key, playerCard),
+        source: getCardSource(key, playerCard),
+      })
+    }
+
+    grouped.get(key).count += 1
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => {
+    const rarityDiff = (RARITY_ORDER[a.rarity] || 99) - (RARITY_ORDER[b.rarity] || 99)
+
+    if (rarityDiff !== 0) return rarityDiff
+
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function getCollectionStats({ playerCards, groupedCards, wallet }) {
+  const totalCards = playerCards.length
+  const uniqueCards = groupedCards.length
+  const duplicateCount = totalCards - uniqueCards
+
+  const totalValue = playerCards.reduce((sum, playerCard) => {
+    return sum + getCardValue(playerCard.cardKey, playerCard)
+  }, 0)
+
+  return {
+    totalCards,
+    uniqueCards,
+    duplicateCount,
+    totalValue,
+    fragments: wallet.fragments,
+  }
+}
+
+function buildFeaturedPageEmbed({
+  user,
+  entry,
+  page,
+  totalPages,
+  stats,
+}) {
   const emoji = RARITY_EMOJIS[entry.rarity] || "🎴"
   const duplicateText = entry.count > 1 ? ` x${entry.count}` : ""
+  const sourceText = entry.source === "fusion" ? "🧬 Carte fusion" : "🎴 Carte Arcane"
 
   const embed = new EmbedBuilder()
     .setTitle(`${emoji} ${entry.name}${duplicateText}`)
-    .setColor(entry.rarity === "mythic" ? 0xe74c3c : 0xf1c40f)
+    .setColor(RARITY_COLORS[entry.rarity] || 0x5865f2)
     .setDescription(entry.description || "Carte de collection.")
     .addFields(
       {
@@ -109,11 +180,26 @@ function buildImageEmbed(entry, user) {
         name: "Valeur",
         value: `⭐ ${entry.value} pts`,
         inline: true,
+      },
+      {
+        name: "Type",
+        value: sourceText,
+        inline: true,
+      },
+      {
+        name: "Collection",
+        value:
+          `🎴 Total : **${stats.totalCards}**\n` +
+          `📘 Uniques : **${stats.uniqueCards}/${allCards.length}**\n` +
+          `♻️ Doublons : **${stats.duplicateCount}**\n` +
+          `💠 Fragments : **${stats.fragments}**`,
+        inline: false,
       }
     )
     .setFooter({
-      text: `Collection de ${user.username}`,
+      text: `Collection de ${user.username} • Carte ${page + 1}/${totalPages}`,
     })
+    .setTimestamp()
 
   if (entry.image) {
     embed.setImage(entry.image)
@@ -122,7 +208,90 @@ function buildImageEmbed(entry, user) {
   return embed
 }
 
-async function buildCollectionEmbeds(client, user, page, pageSize = PAGE_SIZE) {
+function buildListPageEmbed({
+  user,
+  listCards,
+  listPage,
+  totalListPages,
+  page,
+  totalPages,
+  stats,
+}) {
+  const start = listPage * LIST_PAGE_SIZE
+  const pageCards = listCards.slice(start, start + LIST_PAGE_SIZE)
+
+  const list = pageCards.length
+    ? pageCards.map(buildCardLine).join("\n")
+    : "Aucune carte épique, rare ou commune à afficher."
+
+  const embed = new EmbedBuilder()
+    .setTitle(`Collection de ${user.username}`)
+    .setColor(0x5865f2)
+    .setDescription(
+      "📜 **Cartes épiques, rares et communes**\n\n" +
+      list
+    )
+    .addFields(
+      {
+        name: "Total",
+        value: `🎴 ${stats.totalCards}`,
+        inline: true,
+      },
+      {
+        name: "Uniques",
+        value: `📘 ${stats.uniqueCards}/${allCards.length}`,
+        inline: true,
+      },
+      {
+        name: "Doublons",
+        value: `♻️ ${stats.duplicateCount}`,
+        inline: true,
+      },
+      {
+        name: "Valeur",
+        value: `⭐ ${stats.totalValue} pts`,
+        inline: true,
+      },
+      {
+        name: "Fragments",
+        value: `💠 ${stats.fragments}`,
+        inline: true,
+      },
+      {
+        name: "Liste",
+        value: `${listPage + 1}/${totalListPages}`,
+        inline: true,
+      }
+    )
+    .setFooter({
+      text: `Collection Arcane • Page ${page + 1}/${totalPages}`,
+    })
+    .setTimestamp()
+
+  return embed
+}
+
+function buildCollectionPages({ user, groupedCards, stats }) {
+  const featuredCards = groupedCards.filter((entry) => {
+    return FEATURED_RARITIES.has(entry.rarity)
+  })
+
+  const listCards = groupedCards.filter((entry) => {
+    return !FEATURED_RARITIES.has(entry.rarity)
+  })
+
+  const totalListPages = Math.max(1, Math.ceil(listCards.length / LIST_PAGE_SIZE))
+  const totalPages = featuredCards.length + totalListPages
+
+  return {
+    featuredCards,
+    listCards,
+    totalListPages,
+    totalPages: Math.max(1, totalPages),
+  }
+}
+
+async function buildCollectionEmbed(client, user, page) {
   const playerCards = await client.db
     .collection("player_cards")
     .find({ userId: user.id })
@@ -143,127 +312,60 @@ async function buildCollectionEmbeds(client, user, page, pageSize = PAGE_SIZE) {
       .setTimestamp()
 
     return {
-      embeds: [embed],
+      embed,
       totalPages: 1,
       page: 0,
     }
   }
 
-  const grouped = new Map()
-
-  for (const card of playerCards) {
-    const key = card.cardKey
-
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        cardKey: key,
-        count: 0,
-        name: formatCardName(key, card),
-        rarity: getRarity(key, card),
-        rarityLabel: getRarityLabel(key, card),
-        value: getCardValue(key, card),
-        image: getCardImage(key, card),
-        description: getCardDescription(key, card),
-      })
-    }
-
-    grouped.get(key).count += 1
-  }
-
-  const cards = Array.from(grouped.values()).sort((a, b) => {
-    const rarityDiff = (RARITY_ORDER[a.rarity] || 99) - (RARITY_ORDER[b.rarity] || 99)
-    if (rarityDiff !== 0) return rarityDiff
-
-    return a.name.localeCompare(b.name)
+  const groupedCards = groupPlayerCards(playerCards)
+  const stats = getCollectionStats({
+    playerCards,
+    groupedCards,
+    wallet,
   })
 
-  const totalCards = playerCards.length
-  const uniqueCards = cards.length
-  const duplicateCount = totalCards - uniqueCards
-  const totalValue = playerCards.reduce((sum, card) => {
-    return sum + getCardValue(card.cardKey, card)
-  }, 0)
+  const {
+    featuredCards,
+    listCards,
+    totalListPages,
+    totalPages,
+  } = buildCollectionPages({
+    user,
+    groupedCards,
+    stats,
+  })
 
-  const totalPages = Math.max(1, Math.ceil(cards.length / pageSize))
   const safePage = Math.min(Math.max(page, 0), totalPages - 1)
 
-  const start = safePage * pageSize
-  const pageCards = cards.slice(start, start + pageSize)
+  if (safePage < featuredCards.length) {
+    const entry = featuredCards[safePage]
 
-  const imageCards = pageCards.filter((entry) => {
-    return IMAGE_RARITIES.has(entry.rarity) && entry.image
-  })
+    return {
+      embed: buildFeaturedPageEmbed({
+        user,
+        entry,
+        page: safePage,
+        totalPages,
+        stats,
+      }),
+      totalPages,
+      page: safePage,
+    }
+  }
 
-  const listedCards = pageCards.filter((entry) => {
-    return !IMAGE_RARITIES.has(entry.rarity) || !entry.image
-  })
-
-  const imageCardLines = imageCards.length
-    ? imageCards.map(buildCardLine).join("\n")
-    : "Aucune carte légendaire ou mythique avec image sur cette page."
-
-  const listedCardLines = listedCards.length
-    ? listedCards.map(buildCardLine).join("\n")
-    : "Aucune carte commune, rare ou épique sur cette page."
-
-  const mainEmbed = new EmbedBuilder()
-    .setTitle(`Collection de ${user.username}`)
-    .setColor(0x5865f2)
-    .setDescription(
-      "Les cartes **mythiques** et **légendaires** avec image sont affichées juste après cet encadré.\n" +
-      "Les autres cartes restent en liste."
-    )
-    .addFields(
-      {
-        name: "Cartes affichées avec image",
-        value: imageCardLines,
-        inline: false,
-      },
-      {
-        name: "Autres cartes",
-        value: listedCardLines,
-        inline: false,
-      },
-      {
-        name: "Total",
-        value: `🎴 ${totalCards}`,
-        inline: true,
-      },
-      {
-        name: "Uniques",
-        value: `📘 ${uniqueCards}/${allCards.length}`,
-        inline: true,
-      },
-      {
-        name: "Doublons",
-        value: `♻️ ${duplicateCount}`,
-        inline: true,
-      },
-      {
-        name: "Valeur",
-        value: `⭐ ${totalValue} pts`,
-        inline: true,
-      },
-      {
-        name: "Fragments",
-        value: `💠 ${wallet.fragments}`,
-        inline: true,
-      },
-      {
-        name: "Page",
-        value: `${safePage + 1}/${totalPages}`,
-        inline: true,
-      }
-    )
-    .setFooter({
-      text: "Collection Arcane",
-    })
-    .setTimestamp()
-
-  const imageEmbeds = imageCards.map((entry) => buildImageEmbed(entry, user))
+  const listPage = safePage - featuredCards.length
 
   return {
-    embeds: [mainEmbed, ...imageEmbeds],
+    embed: buildListPageEmbed({
+      user,
+      listCards,
+      listPage,
+      totalListPages,
+      page: safePage,
+      totalPages,
+      stats,
+    }),
     totalPages,
     page: safePage,
   }
@@ -301,11 +403,11 @@ module.exports = {
 
     const user = interaction.options.getUser("utilisateur") || interaction.user
 
-    const result = await buildCollectionEmbeds(client, user, 0)
+    const result = await buildCollectionEmbed(client, user, 0)
     const row = buildButtons(user.id, result.page || 0, result.totalPages)
 
     return interaction.editReply({
-      embeds: result.embeds,
+      embeds: [result.embed],
       components: [row],
     })
   },
@@ -337,11 +439,11 @@ module.exports = {
       newPage = currentPage + 1
     }
 
-    const result = await buildCollectionEmbeds(client, user, newPage)
+    const result = await buildCollectionEmbed(client, user, newPage)
     const row = buildButtons(user.id, result.page || 0, result.totalPages)
 
     return interaction.update({
-      embeds: result.embeds,
+      embeds: [result.embed],
       components: [row],
     })
   },
