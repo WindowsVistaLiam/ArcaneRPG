@@ -7,6 +7,11 @@ const {
 } = require("discord.js")
 
 const arcaneCards = require("../../data/arcaneCards")
+const fusionCards = require("../../data/fusionCards")
+
+const allCards = [...arcaneCards, ...fusionCards]
+
+const PAGE_SIZE = 9
 
 const RARITY_ORDER = {
   mythic: 1,
@@ -24,18 +29,51 @@ const RARITY_EMOJIS = {
   mythic: "🔴",
 }
 
+const IMAGE_RARITIES = new Set(["legendary", "mythic"])
+
 function getCardFromCatalog(cardKey) {
-  return arcaneCards.find((card) => card.key === cardKey)
+  return allCards.find((card) => card.key === cardKey)
 }
 
-function formatCardName(cardKey) {
+function formatCardName(cardKey, playerCard = null) {
   const card = getCardFromCatalog(cardKey)
-  return card ? card.name : cardKey
+
+  if (card?.name) return card.name
+  if (playerCard?.cardName) return playerCard.cardName
+  if (playerCard?.name) return playerCard.name
+  if (playerCard?.characterName) return playerCard.characterName
+
+  return cardKey
 }
 
-function getRarity(cardKey) {
+function getRarity(cardKey, playerCard = null) {
   const card = getCardFromCatalog(cardKey)
-  return card?.rarity || "common"
+
+  return card?.rarity || playerCard?.rarity || "common"
+}
+
+function getRarityLabel(cardKey, playerCard = null) {
+  const card = getCardFromCatalog(cardKey)
+
+  return card?.rarityLabel || playerCard?.rarityLabel || "Commun"
+}
+
+function getCardValue(cardKey, playerCard = null) {
+  const card = getCardFromCatalog(cardKey)
+
+  return card?.value || playerCard?.value || 0
+}
+
+function getCardImage(cardKey, playerCard = null) {
+  const card = getCardFromCatalog(cardKey)
+
+  return card?.image || playerCard?.image || ""
+}
+
+function getCardDescription(cardKey, playerCard = null) {
+  const card = getCardFromCatalog(cardKey)
+
+  return card?.description || playerCard?.description || ""
 }
 
 async function getWallet(client, userId) {
@@ -46,7 +84,45 @@ async function getWallet(client, userId) {
   }
 }
 
-async function buildCollectionEmbed(client, user, page, pageSize = 10) {
+function buildCardLine(entry) {
+  const emoji = RARITY_EMOJIS[entry.rarity] || "⚪"
+  const duplicateText = entry.count > 1 ? ` **x${entry.count}**` : ""
+
+  return `${emoji} **${entry.name}**${duplicateText} — ${entry.rarityLabel}`
+}
+
+function buildImageEmbed(entry, user) {
+  const emoji = RARITY_EMOJIS[entry.rarity] || "🎴"
+  const duplicateText = entry.count > 1 ? ` x${entry.count}` : ""
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${emoji} ${entry.name}${duplicateText}`)
+    .setColor(entry.rarity === "mythic" ? 0xe74c3c : 0xf1c40f)
+    .setDescription(entry.description || "Carte de collection.")
+    .addFields(
+      {
+        name: "Rareté",
+        value: `**${entry.rarityLabel}**`,
+        inline: true,
+      },
+      {
+        name: "Valeur",
+        value: `⭐ ${entry.value} pts`,
+        inline: true,
+      }
+    )
+    .setFooter({
+      text: `Collection de ${user.username}`,
+    })
+
+  if (entry.image) {
+    embed.setImage(entry.image)
+  }
+
+  return embed
+}
+
+async function buildCollectionEmbeds(client, user, page, pageSize = PAGE_SIZE) {
   const playerCards = await client.db
     .collection("player_cards")
     .find({ userId: user.id })
@@ -55,17 +131,21 @@ async function buildCollectionEmbed(client, user, page, pageSize = 10) {
   const wallet = await getWallet(client, user.id)
 
   if (!playerCards.length) {
+    const embed = new EmbedBuilder()
+      .setTitle(`Collection de ${user.username}`)
+      .setColor(0x5865f2)
+      .setDescription("Cette collection est vide.")
+      .addFields({
+        name: "Fragments",
+        value: `💠 ${wallet.fragments}`,
+        inline: true,
+      })
+      .setTimestamp()
+
     return {
-      embed: new EmbedBuilder()
-        .setTitle(`Collection de ${user.username}`)
-        .setColor(0x5865f2)
-        .setDescription("Cette collection est vide.")
-        .addFields({
-          name: "Fragments",
-          value: `💠 ${wallet.fragments}`,
-          inline: true,
-        }),
+      embeds: [embed],
       totalPages: 1,
+      page: 0,
     }
   }
 
@@ -78,9 +158,12 @@ async function buildCollectionEmbed(client, user, page, pageSize = 10) {
       grouped.set(key, {
         cardKey: key,
         count: 0,
-        rarity: card.rarity || getRarity(key),
-        rarityLabel: card.rarityLabel || getCardFromCatalog(key)?.rarityLabel || "Commun",
-        value: card.value || getCardFromCatalog(key)?.value || 0,
+        name: formatCardName(key, card),
+        rarity: getRarity(key, card),
+        rarityLabel: getRarityLabel(key, card),
+        value: getCardValue(key, card),
+        image: getCardImage(key, card),
+        description: getCardDescription(key, card),
       })
     }
 
@@ -91,13 +174,15 @@ async function buildCollectionEmbed(client, user, page, pageSize = 10) {
     const rarityDiff = (RARITY_ORDER[a.rarity] || 99) - (RARITY_ORDER[b.rarity] || 99)
     if (rarityDiff !== 0) return rarityDiff
 
-    return formatCardName(a.cardKey).localeCompare(formatCardName(b.cardKey))
+    return a.name.localeCompare(b.name)
   })
 
   const totalCards = playerCards.length
   const uniqueCards = cards.length
   const duplicateCount = totalCards - uniqueCards
-  const totalValue = playerCards.reduce((sum, card) => sum + (card.value || 0), 0)
+  const totalValue = playerCards.reduce((sum, card) => {
+    return sum + getCardValue(card.cardKey, card)
+  }, 0)
 
   const totalPages = Math.max(1, Math.ceil(cards.length / pageSize))
   const safePage = Math.min(Math.max(page, 0), totalPages - 1)
@@ -105,21 +190,40 @@ async function buildCollectionEmbed(client, user, page, pageSize = 10) {
   const start = safePage * pageSize
   const pageCards = cards.slice(start, start + pageSize)
 
-  const list = pageCards
-    .map((entry) => {
-      const emoji = RARITY_EMOJIS[entry.rarity] || "⚪"
-      const name = formatCardName(entry.cardKey)
-      const duplicateText = entry.count > 1 ? ` **x${entry.count}**` : ""
+  const imageCards = pageCards.filter((entry) => {
+    return IMAGE_RARITIES.has(entry.rarity) && entry.image
+  })
 
-      return `${emoji} **${name}**${duplicateText} — ${entry.rarityLabel}`
-    })
-    .join("\n")
+  const listedCards = pageCards.filter((entry) => {
+    return !IMAGE_RARITIES.has(entry.rarity) || !entry.image
+  })
 
-  const embed = new EmbedBuilder()
+  const imageCardLines = imageCards.length
+    ? imageCards.map(buildCardLine).join("\n")
+    : "Aucune carte légendaire ou mythique avec image sur cette page."
+
+  const listedCardLines = listedCards.length
+    ? listedCards.map(buildCardLine).join("\n")
+    : "Aucune carte commune, rare ou épique sur cette page."
+
+  const mainEmbed = new EmbedBuilder()
     .setTitle(`Collection de ${user.username}`)
     .setColor(0x5865f2)
-    .setDescription(list || "Aucune carte à afficher.")
+    .setDescription(
+      "Les cartes **mythiques** et **légendaires** avec image sont affichées juste après cet encadré.\n" +
+      "Les autres cartes restent en liste."
+    )
     .addFields(
+      {
+        name: "Cartes affichées avec image",
+        value: imageCardLines,
+        inline: false,
+      },
+      {
+        name: "Autres cartes",
+        value: listedCardLines,
+        inline: false,
+      },
       {
         name: "Total",
         value: `🎴 ${totalCards}`,
@@ -127,7 +231,7 @@ async function buildCollectionEmbed(client, user, page, pageSize = 10) {
       },
       {
         name: "Uniques",
-        value: `📘 ${uniqueCards}/${arcaneCards.length}`,
+        value: `📘 ${uniqueCards}/${allCards.length}`,
         inline: true,
       },
       {
@@ -156,8 +260,10 @@ async function buildCollectionEmbed(client, user, page, pageSize = 10) {
     })
     .setTimestamp()
 
+  const imageEmbeds = imageCards.map((entry) => buildImageEmbed(entry, user))
+
   return {
-    embed,
+    embeds: [mainEmbed, ...imageEmbeds],
     totalPages,
     page: safePage,
   }
@@ -191,13 +297,15 @@ module.exports = {
     ),
 
   async execute(interaction, client) {
+    await interaction.deferReply()
+
     const user = interaction.options.getUser("utilisateur") || interaction.user
 
-    const result = await buildCollectionEmbed(client, user, 0)
+    const result = await buildCollectionEmbeds(client, user, 0)
     const row = buildButtons(user.id, result.page || 0, result.totalPages)
 
-    return interaction.reply({
-      embeds: [result.embed],
+    return interaction.editReply({
+      embeds: result.embeds,
       components: [row],
     })
   },
@@ -229,11 +337,11 @@ module.exports = {
       newPage = currentPage + 1
     }
 
-    const result = await buildCollectionEmbed(client, user, newPage)
+    const result = await buildCollectionEmbeds(client, user, newPage)
     const row = buildButtons(user.id, result.page || 0, result.totalPages)
 
     return interaction.update({
-      embeds: [result.embed],
+      embeds: result.embeds,
       components: [row],
     })
   },
