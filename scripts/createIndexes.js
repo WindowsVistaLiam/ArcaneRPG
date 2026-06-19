@@ -79,6 +79,10 @@ async function main() {
         { userId: 1 },
         { unique: true }
       ),
+      db.collection("player_album_rewards").createIndex(
+        { userId: 1, albumKey: 1, level: 1 },
+        { unique: true }
+      )
     ])
 
     console.log("✅ Index MongoDB créés avec succès.")

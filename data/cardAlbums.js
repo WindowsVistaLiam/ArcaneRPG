@@ -43,15 +43,15 @@ module.exports = [
   },
   {
     key: "noxus",
-    name: "Noxus",
+    name: "Noxus & Rose Noire",
     emoji: "🔴",
-    description: "Les personnages liés à Noxus, aux Medarda et aux jeux de pouvoir militaires.",
-    matchTags: ["Noxus", "Medarda"],
-    matchFactions: ["Noxus"],
+    description: "Les cartes liées à Noxus, aux Medarda, à la Rose Noire et aux manipulations politiques.",
+    matchTags: ["Noxus", "Medarda", "Rose Noire", "LeBlanc", "Magie"],
+    matchFactions: ["Noxus", "Rose Noire", "Noxus / Rose Noire"],
     excludeFusion: true,
     rewards: {
       ...DEFAULT_LEVEL_REWARDS,
-      5: { fragments: 2000, title: "Sang de Noxus" },
+      5: { fragments: 2000, title: "Main de Noxus" },
     },
   },
   {
@@ -78,19 +78,6 @@ module.exports = [
     rewards: {
       ...DEFAULT_LEVEL_REWARDS,
       5: { fragments: 2000, title: "Pionnier Hextech" },
-    },
-  },
-  {
-    key: "rose_noire",
-    name: "Rose Noire",
-    emoji: "🌹",
-    description: "Les cartes liées à la Rose Noire, à LeBlanc, à la magie et aux manipulations noxiennes.",
-    matchTags: ["Rose Noire", "LeBlanc", "Magie"],
-    matchFactions: ["Rose Noire", "Noxus / Rose Noire"],
-    excludeFusion: true,
-    rewards: {
-      ...DEFAULT_LEVEL_REWARDS,
-      5: { fragments: 2000, title: "Élu de la Rose Noire" },
     },
   },
   {
