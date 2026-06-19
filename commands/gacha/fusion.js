@@ -11,6 +11,7 @@ const arcaneCards = require("../../data/arcaneCards")
 const fusionCards = require("../../data/fusionCards")
 
 const { getCardStats } = require("../../utils/cardBattle")
+const { checkAlbumCompletions } = require("./album")
 
 const EPHEMERAL_FLAG = 64
 
@@ -885,6 +886,8 @@ module.exports = {
           components: [],
         })
       }
+
+      await checkAlbumCompletions(client, interaction.user.id).catch(console.error)
 
       const stats = getFusionStats(fusionCard)
       const embed = buildFusionSuccessEmbed(fusionCard, stats)

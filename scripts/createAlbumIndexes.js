@@ -22,15 +22,22 @@ async function main() {
 
     const db = mongoClient.db("arcaneRPG")
 
-    await db.collection("player_album_rewards").createIndex(
-      { userId: 1, albumKey: 1, level: 1 },
-      { unique: true }
-    )
+    await Promise.all([
+      db.collection("player_album_rewards").createIndex(
+        { userId: 1, albumKey: 1, level: 1 },
+        { unique: true }
+      ),
 
-    await db.collection("player_titles").createIndex(
-      { userId: 1, titleKey: 1 },
-      { unique: true }
-    )
+      db.collection("player_album_notifications").createIndex(
+        { userId: 1, albumKey: 1, level: 1 },
+        { unique: true }
+      ),
+
+      db.collection("player_titles").createIndex(
+        { userId: 1, titleKey: 1 },
+        { unique: true }
+      ),
+    ])
 
     console.log("✅ Index albums créés avec succès.")
   } catch (error) {

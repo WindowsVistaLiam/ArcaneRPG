@@ -9,6 +9,7 @@ const {
 
 const arcaneCards = require("../../data/arcaneCards")
 const fusionCards = require("../../data/fusionCards")
+const { checkAlbumCompletions } = require("../gacha/album")
 
 const allCards = [...arcaneCards, ...fusionCards]
 
@@ -529,6 +530,7 @@ module.exports = {
       }
 
       await addCardToPlayer(client, user, card, interaction.user.id)
+      checkAlbumCompletions(client, user.id).catch(console.error)
 
       const embed = new EmbedBuilder()
         .setTitle("✅ Carte ajoutée")

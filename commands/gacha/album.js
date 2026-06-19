@@ -13,6 +13,8 @@ const cardAlbums = require("../../data/cardAlbums")
 
 const allCards = [...arcaneCards, ...fusionCards]
 
+const ALBUM_NOTIFICATION_CHANNEL_ID = "1513427217143566386"
+
 const LEVELS = {
   1: {
     label: "Niveau 1",
@@ -179,6 +181,17 @@ async function getClaimedRewards(client, userId) {
     .toArray()
 
   return new Set(rewards.map((reward) => `${reward.albumKey}:${reward.level}`))
+}
+
+async function getSentNotifications(client, userId) {
+  const notifications = await client.db.collection("player_album_notifications")
+    .find(
+      { userId },
+      { projection: { albumKey: 1, level: 1 } }
+    )
+    .toArray()
+
+  return new Set(notifications.map((notification) => `${notification.albumKey}:${notification.level}`))
 }
 
 function getLevelProgress(requiredCards, ownedKeys) {
@@ -439,7 +452,6 @@ function buildLevelActionRows({
   canClaim,
 }) {
   const rows = []
-
   const buttons = []
 
   if (canClaim) {
@@ -466,7 +478,6 @@ function buildLevelActionRows({
   )
 
   rows.push(new ActionRowBuilder().addComponents(...buttons))
-
   return rows
 }
 
@@ -542,6 +553,108 @@ async function unlockTitle(client, userId, title) {
   )
 
   return true
+}
+
+async function getCompletedAlbumLevels(client, userId) {
+  const ownedKeys = await getOwnedCardKeys(client, userId)
+  const claimedRewards = await getClaimedRewards(client, userId)
+  const sentNotifications = await getSentNotifications(client, userId)
+  const completedLevels = []
+
+  for (const album of cardAlbums) {
+    for (const levelKey of Object.keys(LEVELS)) {
+      const level = Number(levelKey)
+      const requiredCards = getAlbumLevelCards(album, level)
+      const progress = getLevelProgress(requiredCards, ownedKeys)
+      const key = getClaimKey(album.key, level)
+
+      if (!requiredCards.length) continue
+      if (!progress.completed) continue
+      if (claimedRewards.has(key)) continue
+      if (sentNotifications.has(key)) continue
+
+      completedLevels.push({
+        album,
+        level,
+        requiredCards,
+        reward: getReward(album, level),
+      })
+    }
+  }
+
+  return completedLevels
+}
+
+async function markAlbumNotificationSent(client, userId, completion) {
+  try {
+    await client.db.collection("player_album_notifications").insertOne({
+      userId,
+      albumKey: completion.album.key,
+      albumName: completion.album.name,
+      level: completion.level,
+      channelId: ALBUM_NOTIFICATION_CHANNEL_ID,
+      notifiedAt: new Date(),
+      createdAt: new Date(),
+    })
+
+    return true
+  } catch (error) {
+    if (error.code === 11000) return false
+    throw error
+  }
+}
+
+async function checkAlbumCompletions(client, userId) {
+  const completedLevels = await getCompletedAlbumLevels(client, userId)
+
+  if (!completedLevels.length) return []
+
+  const newlyNotified = []
+
+  for (const completion of completedLevels) {
+    const inserted = await markAlbumNotificationSent(client, userId, completion)
+    if (inserted) newlyNotified.push(completion)
+  }
+
+  if (!newlyNotified.length) return []
+
+  const channel = await client.channels.fetch(ALBUM_NOTIFICATION_CHANNEL_ID).catch(() => null)
+
+  if (!channel || !channel.isTextBased?.()) {
+    console.warn(`Salon de notification album introuvable : ${ALBUM_NOTIFICATION_CHANNEL_ID}`)
+    return newlyNotified
+  }
+
+  const user = await client.users.fetch(userId).catch(() => null)
+  const userName = user?.username || "Un joueur"
+
+  const lines = newlyNotified.map((completion) => {
+    const reward = formatReward(completion.reward).replace(/\n/g, " + ")
+
+    return `${completion.album.emoji || "📘"} **${completion.album.name} — Niveau ${completion.level}** : ${reward}`
+  })
+
+  const embed = new EmbedBuilder()
+    .setTitle("📚 Niveau de collection complété !")
+    .setColor(0x2ecc71)
+    .setDescription(
+      `<@${userId}> vient de compléter ${newlyNotified.length > 1 ? "plusieurs niveaux de collection" : "un niveau de collection"}.\n\n` +
+      `${lines.join("\n")}\n\n` +
+      `Utilise **/album** dans ce salon pour récupérer ${newlyNotified.length > 1 ? "tes récompenses" : "ta récompense"}.`
+    )
+    .setFooter({
+      text: `Albums de ${userName}`,
+    })
+    .setTimestamp()
+
+  await channel.send({
+    content: `<@${userId}>`,
+    embeds: [embed],
+  }).catch((error) => {
+    console.error("Erreur envoi notification album :", error)
+  })
+
+  return newlyNotified
 }
 
 async function claimAlbumReward(client, userId, album, level) {
@@ -740,9 +853,12 @@ module.exports = {
     .setName("album")
     .setDescription("Voir tes albums de cartes et récupérer les récompenses"),
 
+  checkAlbumCompletions,
+
   async execute(interaction, client) {
     await interaction.deferReply()
 
+    await checkAlbumCompletions(client, interaction.user.id).catch(console.error)
     await showHome(interaction, client, interaction.user.id, false)
   },
 

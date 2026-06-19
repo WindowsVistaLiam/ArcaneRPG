@@ -6,6 +6,14 @@ const DEFAULT_LEVEL_REWARDS = {
   5: { fragments: 2000 },
 }
 
+const SMALL_LEVEL_REWARDS = {
+  1: { fragments: 100 },
+  2: { fragments: 200 },
+  3: { fragments: 400 },
+  4: { fragments: 700 },
+  5: { fragments: 1200 },
+}
+
 const FUSION_LEVEL_REWARDS = {
   1: { fragments: 300 },
   2: { fragments: 600 },
@@ -50,8 +58,8 @@ module.exports = [
     matchFactions: ["Noxus", "Rose Noire", "Noxus / Rose Noire"],
     excludeFusion: true,
     rewards: {
-      ...DEFAULT_LEVEL_REWARDS,
-      5: { fragments: 2000, title: "Main de Noxus" },
+      ...SMALL_LEVEL_REWARDS,
+      5: { fragments: 1200, title: "Main de Noxus" },
     },
   },
   {
@@ -63,8 +71,8 @@ module.exports = [
     matchFactions: ["Firelights", "Firelight"],
     excludeFusion: true,
     rewards: {
-      ...DEFAULT_LEVEL_REWARDS,
-      5: { fragments: 2000, title: "Lumière de Zaun" },
+      ...SMALL_LEVEL_REWARDS,
+      5: { fragments: 1200, title: "Lumière de Zaun" },
     },
   },
   {

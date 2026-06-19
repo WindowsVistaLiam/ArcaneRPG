@@ -48,6 +48,41 @@ async function safeErrorReply(interaction, message) {
   }
 }
 
+function shouldCheckAlbumCompletion(interaction) {
+  if (!interaction.inGuild?.()) return false
+  if (interaction.user?.bot) return false
+
+  if (interaction.isChatInputCommand()) {
+    return ["album", "tirage"].includes(interaction.commandName)
+  }
+
+  if (interaction.isButton()) {
+    return (
+      interaction.customId.startsWith("album:") ||
+      interaction.customId.startsWith("fusion:confirm:") ||
+      interaction.customId.startsWith("tirage:")
+    )
+  }
+
+  if (interaction.isStringSelectMenu()) {
+    return interaction.customId.startsWith("album:")
+  }
+
+  return false
+}
+
+async function checkAlbumCompletionAfterInteraction(interaction, client) {
+  if (!shouldCheckAlbumCompletion(interaction)) return
+
+  const albumCommand = client.commands.get("album")
+
+  if (typeof albumCommand?.checkAlbumCompletions !== "function") return
+
+  await albumCommand.checkAlbumCompletions(client, interaction.user.id).catch((error) => {
+    console.error("❌ Erreur vérification albums :", error)
+  })
+}
+
 module.exports = {
   name: "interactionCreate",
 
@@ -67,6 +102,7 @@ module.exports = {
 
         console.log(`➡️ Interaction commande : ${label}`)
         await command.execute(interaction, client)
+        await checkAlbumCompletionAfterInteraction(interaction, client)
         return
       }
 
@@ -83,6 +119,7 @@ module.exports = {
           }
         }
 
+        await checkAlbumCompletionAfterInteraction(interaction, client)
         return
       }
 
@@ -99,6 +136,7 @@ module.exports = {
           }
         }
 
+        await checkAlbumCompletionAfterInteraction(interaction, client)
         return
       }
 
