@@ -4,6 +4,7 @@ const {
 } = require("discord.js")
 
 const arcaneCards = require("../../data/arcaneCards")
+const fusionCards = require("../../data/fusionCards")
 
 const {
   getCardStats,
