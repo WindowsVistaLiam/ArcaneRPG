@@ -963,3 +963,60 @@ module.exports = {
     })
   },
 }
+const HEXCORE_EVOLUTION_RULES = [
+  {
+    legendaryCharacterKey: "jinx",
+    legendaryVariant: "Légende de Zaun",
+    mythicCharacterKey: "jinx",
+  },
+  {
+    legendaryCharacterKey: "vi",
+    legendaryVariant: "Gants Hextech",
+    mythicCharacterKey: "vi",
+  },
+  {
+    legendaryCharacterKey: "caitlyn",
+    legendaryVariant: "Commandante",
+    mythicCharacterKey: "caitlyn",
+  },
+  {
+    legendaryCharacterKey: "ekko",
+    legendaryVariant: "Boy Savior",
+    mythicCharacterKey: "ekko",
+  },
+  {
+    legendaryCharacterKey: "jayce",
+    legendaryVariant: "Marteau Mercury",
+    mythicCharacterKey: "jayce",
+  },
+  {
+    legendaryCharacterKey: "viktor",
+    legendaryVariant: "Apôtre du progrès",
+    mythicCharacterKey: "viktor",
+  },
+  {
+    legendaryCharacterKey: "mel",
+    legendaryVariant: "Mage révélée",
+    mythicCharacterKey: "mel",
+  },
+  {
+    legendaryCharacterKey: "silco",
+    legendaryVariant: "Père de Jinx",
+    mythicCharacterKey: "silco",
+  },
+  {
+    legendaryCharacterKey: "warwick",
+    legendaryVariant: "Bête de Zaun",
+    mythicCharacterKey: "warwick",
+  },
+  {
+    legendaryCharacterKey: "ambessa",
+    legendaryVariant: "Louve de Noxus",
+    mythicCharacterKey: "ambessa",
+  },
+  {
+    legendaryCharacterKey: "leblanc",
+    legendaryVariant: "Rose Noire",
+    mythicCharacterKey: "leblanc",
+  },
+]
