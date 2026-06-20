@@ -469,7 +469,7 @@ const arcaneCards = [
     characterName: "Mel Medarda",
     variant: "Lumière dorée",
     rarity: "mythic",
-    image: "https://media.discordapp.net/attachments/1510926398074781816/1515969161497546762/lol-league-of-legends.gif",
+    image: "https://media.discordapp.net/attachments/1515074537564405831/1517947350985740379/transformation-arcane.gif",
     description: "Mel dans sa forme la plus rare, brillante et souveraine.",
     faction: "Piltover / Noxus",
     season: "Saison 2",
