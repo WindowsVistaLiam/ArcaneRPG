@@ -11,12 +11,13 @@ const arcaneCards = require("../../data/arcaneCards")
 const fusionCards = require("../../data/fusionCards")
 
 const { getCardStats } = require("../../utils/cardBattle")
-const { checkAlbumCompletions } = require("./album")
 
 const EPHEMERAL_FLAG = 64
 
 const AVAILABLE_ITEMS_PER_PAGE = 5
 const SELECT_ITEMS_PER_PAGE = 25
+
+const allCatalogCards = [...arcaneCards, ...fusionCards]
 
 const RARITY_COLORS = {
   common: 0x95a5a6,
@@ -51,6 +52,75 @@ const RARITY_LABELS = {
   mythic: "Mythiques",
 }
 
+const HEXCORE_EVOLUTION_RULES = [
+  {
+    legendaryCharacterKey: "jinx",
+    legendaryText: "Légende de Zaun",
+    mythicCharacterKey: "jinx",
+    mythicText: "Blue Flare",
+  },
+  {
+    legendaryCharacterKey: "vi",
+    legendaryText: "Gants Hextech",
+    mythicCharacterKey: "vi",
+    mythicText: "Protectrice brisée",
+  },
+  {
+    legendaryCharacterKey: "caitlyn",
+    legendaryText: "Commandante",
+    mythicCharacterKey: "caitlyn",
+    mythicText: "Œil de Piltover",
+  },
+  {
+    legendaryCharacterKey: "ekko",
+    legendaryText: "Boy Savior",
+    mythicCharacterKey: "ekko",
+    mythicText: "Z-Drive",
+  },
+  {
+    legendaryCharacterKey: "jayce",
+    legendaryText: "Marteau Mercury",
+    mythicCharacterKey: "jayce",
+    mythicText: "Défenseur brisé",
+  },
+  {
+    legendaryCharacterKey: "viktor",
+    legendaryText: "Apôtre du progrès",
+    mythicCharacterKey: "viktor",
+    mythicText: "Glorious Evolution",
+  },
+  {
+    legendaryCharacterKey: "mel",
+    legendaryText: "Mage révélée",
+    mythicCharacterKey: "mel",
+    mythicText: "Lumière dorée",
+  },
+  {
+    legendaryCharacterKey: "silco",
+    legendaryText: "Père de Jinx",
+    mythicCharacterKey: "silco",
+    mythicText: "Rêve de Zaun",
+  },
+  {
+    legendaryCharacterKey: "warwick",
+    legendaryText: "Bête de Zaun",
+    mythicCharacterKey: "warwick",
+    mythicText: "Vander éveillé",
+  },
+  {
+    legendaryCharacterKey: "ambessa",
+    legendaryText: "Louve de Noxus",
+    mythicCharacterKey: "ambessa",
+    mythicText: "Matriarche de guerre",
+  },
+  {
+    legendaryCharacterKey: "leblanc",
+    legendaryText: "Rose Noire",
+    mythicCharacterKey: "leblanc",
+    mythicText: "Illusion de la Rose",
+  },
+]
+
 function normalizeText(text) {
   return String(text || "")
     .toLowerCase()
@@ -78,16 +148,122 @@ function getRarityLabel(rarity) {
   return RARITY_LABELS[rarity] || RARITY_LABELS.all
 }
 
+function cardContainsText(card, text) {
+  const query = normalizeText(text)
+  const tokens = [
+    card.key,
+    card.name,
+    card.cardName,
+    card.characterName,
+    card.characterKey,
+    card.variant,
+    card.faction,
+    card.season,
+    ...(card.tags || []),
+  ]
+    .filter(Boolean)
+    .map(normalizeText)
+
+  return tokens.some((token) => token.includes(query))
+}
+
+function isHexcoreLegendaryCard(card) {
+  return card?.rarity === "legendary" && cardContainsText(card, "hexcore")
+}
+
+function findHexcoreLegendaryCards() {
+  return allCatalogCards.filter(isHexcoreLegendaryCard)
+}
+
+function findLegendaryCardByRule(rule) {
+  const searchText = normalizeText(rule.legendaryText)
+
+  return arcaneCards.find((card) => {
+    return (
+      card.rarity === "legendary" &&
+      card.characterKey === rule.legendaryCharacterKey &&
+      normalizeText(card.name).includes(searchText)
+    )
+  })
+}
+
+function findMythicCardByRule(rule) {
+  const searchText = normalizeText(rule.mythicText)
+
+  return arcaneCards.find((card) => {
+    return (
+      card.rarity === "mythic" &&
+      card.characterKey === rule.mythicCharacterKey &&
+      normalizeText(card.name).includes(searchText)
+    )
+  })
+}
+
+function getHexcoreEvolutionCards() {
+  const hexcoreCards = findHexcoreLegendaryCards()
+
+  if (!hexcoreCards.length) return []
+
+  const evolutions = []
+  const seenKeys = new Set()
+
+  for (const hexcoreCard of hexcoreCards) {
+    for (const rule of HEXCORE_EVOLUTION_RULES) {
+      const legendaryCard = findLegendaryCardByRule(rule)
+      const mythicCard = findMythicCardByRule(rule)
+
+      if (!legendaryCard || !mythicCard) continue
+
+      const evolutionKey = `hexcore_evolution_${legendaryCard.key}_to_${mythicCard.key}`
+
+      if (seenKeys.has(evolutionKey)) continue
+      seenKeys.add(evolutionKey)
+
+      evolutions.push({
+        key: evolutionKey,
+        name: `Hexcore & ${legendaryCard.characterName} — ${mythicCard.name}`,
+        characterName: mythicCard.characterName,
+        rarity: "mythic",
+        rarityLabel: "Évolution mythique",
+        value: mythicCard.value || 1000,
+        image: mythicCard.image || "",
+        description:
+          `Utilise **${hexcoreCard.name}** avec **${legendaryCard.name}** pour obtenir la version mythique : **${mythicCard.name}**.`,
+        faction: mythicCard.faction || legendaryCard.faction || "Hexcore",
+        season: "Évolution Hexcore",
+        tags: ["Hexcore", "Évolution", "Mythique", ...(mythicCard.tags || [])],
+        source: "hexcore_evolution",
+        isPullable: false,
+        isHexcoreEvolution: true,
+        fusionBonusPercent: 0,
+        ingredients: [hexcoreCard.key, legendaryCard.key],
+        outputCardKey: mythicCard.key,
+      })
+    }
+  }
+
+  return evolutions
+}
+
+function getAllFusionOptions() {
+  return [...fusionCards, ...getHexcoreEvolutionCards()]
+}
+
+function findFusionByKey(fusionKey) {
+  return getAllFusionOptions().find((card) => card.key === fusionKey)
+}
+
 function findFusion(search) {
   const query = normalizeText(search)
+  const allFusionOptions = getAllFusionOptions()
 
-  const exactKey = fusionCards.find((card) => normalizeText(card.key) === query)
+  const exactKey = allFusionOptions.find((card) => normalizeText(card.key) === query)
   if (exactKey) return exactKey
 
-  const exactName = fusionCards.find((card) => normalizeText(card.name) === query)
+  const exactName = allFusionOptions.find((card) => normalizeText(card.name) === query)
   if (exactName) return exactName
 
-  return fusionCards.find((card) => {
+  return allFusionOptions.find((card) => {
     return (
       normalizeText(card.key).includes(query) ||
       normalizeText(card.name).includes(query) ||
@@ -96,8 +272,26 @@ function findFusion(search) {
   })
 }
 
+function getFusionResultCard(fusionCard) {
+  if (!fusionCard?.isHexcoreEvolution) return fusionCard
+
+  return arcaneCards.find((card) => card.key === fusionCard.outputCardKey) || fusionCard
+}
+
+function getFusionResultKey(fusionCard) {
+  return fusionCard?.outputCardKey || fusionCard?.key
+}
+
+function getFusionBonusText(fusionCard) {
+  if (fusionCard?.isHexcoreEvolution) {
+    return "**Version mythique obtenue**"
+  }
+
+  return `**+${fusionCard.fusionBonusPercent || 10}%**`
+}
+
 function getOfficialCard(cardKey) {
-  return arcaneCards.find((card) => card.key === cardKey)
+  return allCatalogCards.find((card) => card.key === cardKey)
 }
 
 function getReadableCardName(cardKey) {
@@ -111,7 +305,7 @@ function getReadableCardName(cardKey) {
 }
 
 function getFusionStats(fusionCard) {
-  return getCardStats(fusionCard)
+  return getCardStats(getFusionResultCard(fusionCard))
 }
 
 function formatStats(stats) {
@@ -157,7 +351,9 @@ async function getOwnedCardKeys(client, userId) {
 }
 
 function userCanCreateFusion(fusionCard, ownedKeys) {
-  if (ownedKeys.has(fusionCard.key)) return false
+  const resultKey = getFusionResultKey(fusionCard)
+
+  if (resultKey && ownedKeys.has(resultKey)) return false
 
   return (fusionCard.ingredients || []).every((ingredientKey) => {
     return ownedKeys.has(ingredientKey)
@@ -166,7 +362,7 @@ function userCanCreateFusion(fusionCard, ownedKeys) {
 
 function getAvailableFusions(ownedKeys) {
   return sortFusions(
-    fusionCards.filter((fusionCard) => userCanCreateFusion(fusionCard, ownedKeys))
+    getAllFusionOptions().filter((fusionCard) => userCanCreateFusion(fusionCard, ownedKeys))
   )
 }
 
@@ -239,8 +435,8 @@ function buildFusionGalleryEmbed({ fusions, page, rarity }) {
         inline: true,
       },
       {
-        name: "Bonus fusion",
-        value: `**+${fusionCard.fusionBonusPercent || 10}%**`,
+        name: fusionCard.isHexcoreEvolution ? "Évolution" : "Bonus fusion",
+        value: getFusionBonusText(fusionCard),
         inline: true,
       },
       {
@@ -276,7 +472,7 @@ function buildAvailableFusionsEmbed({ availableFusions, page, ownedKeys }) {
     .setTitle("✅ Fusions disponibles")
     .setColor(0x2ecc71)
     .setDescription(
-      "Voici les fusions que tu peux créer maintenant avec tes cartes actuelles, en excluant celles que tu possèdes déjà."
+      "Voici les fusions et évolutions Hexcore que tu peux créer maintenant avec tes cartes actuelles, en excluant celles que tu possèdes déjà."
     )
     .setFooter({
       text: `Page ${safePage + 1}/${totalPages} • ${availableFusions.length} fusion${availableFusions.length > 1 ? "s" : ""} disponible${availableFusions.length > 1 ? "s" : ""}`,
@@ -294,7 +490,7 @@ function buildAvailableFusionsEmbed({ availableFusions, page, ownedKeys }) {
       name: `${emoji} ${fusionCard.name}`,
       value:
         `Rareté : **${fusionCard.rarityLabel || fusionCard.rarity}**\n` +
-        `Bonus fusion : **+${fusionCard.fusionBonusPercent || 10}%**\n` +
+        `${fusionCard.isHexcoreEvolution ? "Évolution" : "Bonus fusion"} : ${getFusionBonusText(fusionCard)}\n` +
         `Cartes nécessaires :\n${ingredientsText || "Aucune carte requise."}`,
       inline: false,
     })
@@ -311,7 +507,8 @@ async function buildFusionViewEmbed(client, userId, fusionCard) {
   const ownedKeys = await getOwnedCardKeys(client, userId)
   const stats = getFusionStats(fusionCard)
 
-  const alreadyOwnsFusion = ownedKeys.has(fusionCard.key)
+  const resultKey = getFusionResultKey(fusionCard)
+  const alreadyOwnsFusion = resultKey ? ownedKeys.has(resultKey) : false
   const canCreate = userCanCreateFusion(fusionCard, ownedKeys)
 
   const ingredientsText = (fusionCard.ingredients || [])
@@ -336,8 +533,8 @@ async function buildFusionViewEmbed(client, userId, fusionCard) {
         inline: true,
       },
       {
-        name: "Bonus fusion",
-        value: `**+${fusionCard.fusionBonusPercent || 10}%**`,
+        name: fusionCard.isHexcoreEvolution ? "Évolution" : "Bonus fusion",
+        value: getFusionBonusText(fusionCard),
         inline: true,
       },
       {
@@ -353,7 +550,9 @@ async function buildFusionViewEmbed(client, userId, fusionCard) {
       {
         name: "État",
         value: alreadyOwnsFusion
-          ? "✅ Tu possèdes déjà cette fusion."
+          ? fusionCard.isHexcoreEvolution
+            ? "✅ Tu possèdes déjà cette version mythique."
+            : "✅ Tu possèdes déjà cette fusion."
           : canCreate
             ? "✅ Tu peux créer cette fusion avec `/fusion creer`."
             : "❌ Il te manque au moins une carte nécessaire.",
@@ -448,23 +647,26 @@ function buildConfirmRows(fusionCard) {
 }
 
 function buildFusionSuccessEmbed(fusionCard, stats) {
-  const emoji = RARITY_EMOJIS[fusionCard.rarity] || "🎴"
+  const resultCard = getFusionResultCard(fusionCard)
+  const emoji = RARITY_EMOJIS[resultCard.rarity] || RARITY_EMOJIS[fusionCard.rarity] || "🎴"
+  const isHexcoreEvolution = Boolean(fusionCard.isHexcoreEvolution)
 
   const embed = new EmbedBuilder()
-    .setTitle("✅ Fusion réussie")
-    .setColor(RARITY_COLORS[fusionCard.rarity] || 0x2ecc71)
+    .setTitle(isHexcoreEvolution ? "✅ Évolution Hexcore réussie" : "✅ Fusion réussie")
+    .setColor(RARITY_COLORS[resultCard.rarity] || RARITY_COLORS[fusionCard.rarity] || 0x2ecc71)
     .setDescription(
-      `${emoji} Tu as créé **${fusionCard.name}**.\n\n` +
-      "Les cartes nécessaires ont été consommées.\n" +
-      "Cette fusion a été ajoutée à ton inventaire."
+      `${emoji} Tu as obtenu **${resultCard.name || fusionCard.name}**.\n\n` +
+      (isHexcoreEvolution
+        ? "L'Hexcore et la carte légendaire ont été consommés.\nLa version mythique a été ajoutée à ton inventaire."
+        : "Les cartes nécessaires ont été consommées.\nCette fusion a été ajoutée à ton inventaire.")
     )
     .addFields(
       {
         name: "Carte obtenue",
         value:
-          `Rareté : **${fusionCard.rarityLabel || fusionCard.rarity}**\n` +
-          `Valeur : **${fusionCard.value || 0} pts**\n` +
-          `Bonus fusion : **+${fusionCard.fusionBonusPercent || 10}%**`,
+          `Rareté : **${resultCard.rarityLabel || fusionCard.rarityLabel || resultCard.rarity || fusionCard.rarity}**\n` +
+          `Valeur : **${resultCard.value || fusionCard.value || 0} pts**\n` +
+          `${fusionCard.isHexcoreEvolution ? "Évolution" : "Bonus fusion"} : ${getFusionBonusText(fusionCard)}`,
         inline: false,
       },
       {
@@ -475,8 +677,8 @@ function buildFusionSuccessEmbed(fusionCard, stats) {
     )
     .setTimestamp()
 
-  if (fusionCard.image) {
-    embed.setImage(fusionCard.image)
+  if (resultCard.image || fusionCard.image) {
+    embed.setImage(resultCard.image || fusionCard.image)
   }
 
   return embed
@@ -531,6 +733,51 @@ async function setFusionAsFavorite(client, userId, fusionCardKey) {
   )
 }
 
+async function addCatalogCard(client, userId, card, source = "hexcore_evolution", evolutionData = null) {
+  const stats = getCardStats(card)
+
+  await client.db.collection("player_cards").updateOne(
+    {
+      userId,
+      cardKey: card.key,
+    },
+    {
+      $setOnInsert: {
+        userId,
+        cardKey: card.key,
+        cardName: card.name,
+        characterName: card.characterName || card.name,
+        rarity: card.rarity,
+        rarityLabel: card.rarityLabel || card.rarity,
+        value: card.value || 0,
+        image: card.image || "",
+        description: card.description || "",
+        faction: card.faction || "Inconnue",
+        season: card.season || "Arcane",
+        tags: card.tags || [],
+        source,
+        isPullable: card.isPullable,
+        evolutionSource: evolutionData?.key || null,
+        evolutionIngredients: evolutionData?.ingredients || [],
+        battleStats: {
+          hp: stats.hp,
+          attack: stats.attack,
+          defense: stats.defense,
+          speed: stats.speed,
+          power: stats.power,
+        },
+        favorite: false,
+        obtainedAt: new Date(),
+        createdAt: new Date(),
+      },
+      $set: {
+        updatedAt: new Date(),
+      },
+    },
+    { upsert: true }
+  )
+}
+
 async function addFusionCard(client, userId, fusionCard) {
   const stats = getFusionStats(fusionCard)
 
@@ -578,11 +825,15 @@ async function addFusionCard(client, userId, fusionCard) {
 
 async function createFusionForUser(client, userId, fusionCard) {
   const ownedKeys = await getOwnedCardKeys(client, userId)
+  const resultCard = getFusionResultCard(fusionCard)
+  const resultKey = getFusionResultKey(fusionCard)
 
-  if (ownedKeys.has(fusionCard.key)) {
+  if (resultKey && ownedKeys.has(resultKey)) {
     return {
       success: false,
-      message: `❌ Tu possèdes déjà cette fusion : **${fusionCard.name}**.`,
+      message: fusionCard.isHexcoreEvolution
+        ? `❌ Tu possèdes déjà la version mythique : **${resultCard.name}**.`
+        : `❌ Tu possèdes déjà cette fusion : **${fusionCard.name}**.`,
     }
   }
 
@@ -611,10 +862,15 @@ async function createFusionForUser(client, userId, fusionCard) {
   const favoriteWasConsumed = currentFavoriteKey && ingredients.includes(currentFavoriteKey)
 
   await consumeIngredientCards(client, userId, ingredients)
-  await addFusionCard(client, userId, fusionCard)
+
+  if (fusionCard.isHexcoreEvolution) {
+    await addCatalogCard(client, userId, resultCard, "hexcore_evolution", fusionCard)
+  } else {
+    await addFusionCard(client, userId, fusionCard)
+  }
 
   if (favoriteWasConsumed) {
-    await setFusionAsFavorite(client, userId, fusionCard.key)
+    await setFusionAsFavorite(client, userId, resultKey)
 
     return {
       success: true,
@@ -631,7 +887,7 @@ async function createFusionForUser(client, userId, fusionCard) {
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("fusion")
-    .setDescription("Créer des cartes fusion uniques avec plusieurs cartes")
+    .setDescription("Créer des cartes fusion ou évoluer une légendaire avec l'Hexcore")
 
     .addSubcommand((subcommand) =>
       subcommand
@@ -688,7 +944,7 @@ module.exports = {
       const rarity = interaction.options.getString("rarete") || "all"
 
       const filteredFusions = filterFusionsByRarity(
-        sortFusions(fusionCards),
+        sortFusions(getAllFusionOptions()),
         rarity
       )
 
@@ -788,7 +1044,7 @@ module.exports = {
       const rarity = parts[3] || "all"
 
       const filteredFusions = filterFusionsByRarity(
-        sortFusions(fusionCards),
+        sortFusions(getAllFusionOptions()),
         rarity
       )
 
@@ -863,7 +1119,7 @@ module.exports = {
       await interaction.deferUpdate()
 
       const fusionKey = parts.slice(2).join(":")
-      const fusionCard = fusionCards.find((card) => card.key === fusionKey)
+      const fusionCard = findFusionByKey(fusionKey)
 
       if (!fusionCard) {
         return interaction.editReply({
@@ -887,8 +1143,6 @@ module.exports = {
         })
       }
 
-      await checkAlbumCompletions(client, interaction.user.id).catch(console.error)
-
       const stats = getFusionStats(fusionCard)
       const embed = buildFusionSuccessEmbed(fusionCard, stats)
 
@@ -897,7 +1151,7 @@ module.exports = {
           name: "Carte favorite",
           value:
             "Ta carte favorite précédente a été consommée pendant la fusion.\n" +
-            "La nouvelle carte fusion est donc devenue ta carte favorite.",
+            "La nouvelle carte obtenue est donc devenue ta carte favorite.",
           inline: false,
         })
       } else {
@@ -905,7 +1159,7 @@ module.exports = {
           name: "Carte favorite",
           value:
             "Ta carte favorite actuelle a été conservée.\n" +
-            "Tu peux changer de favorite avec `/favori` si tu veux utiliser cette fusion en combat.",
+            "Tu peux changer de favorite avec `/favori` si tu veux utiliser cette carte en combat.",
           inline: false,
         })
       }
@@ -932,7 +1186,7 @@ module.exports = {
     await interaction.deferUpdate()
 
     const fusionKey = interaction.values[0]
-    const fusionCard = fusionCards.find((card) => card.key === fusionKey)
+    const fusionCard = findFusionByKey(fusionKey)
 
     if (!fusionCard) {
       return interaction.editReply({
@@ -951,7 +1205,7 @@ module.exports = {
     embed.addFields({
       name: "Confirmation",
       value:
-        "Clique sur **Confirmer la fusion** pour consommer les cartes nécessaires et créer cette fusion.\n" +
+        "Clique sur **Confirmer la fusion** pour consommer les cartes nécessaires et obtenir la carte indiquée.\n" +
         "Cette action est définitive.",
       inline: false,
     })
@@ -963,60 +1217,3 @@ module.exports = {
     })
   },
 }
-const HEXCORE_EVOLUTION_RULES = [
-  {
-    legendaryCharacterKey: "jinx",
-    legendaryVariant: "Légende de Zaun",
-    mythicCharacterKey: "jinx",
-  },
-  {
-    legendaryCharacterKey: "vi",
-    legendaryVariant: "Gants Hextech",
-    mythicCharacterKey: "vi",
-  },
-  {
-    legendaryCharacterKey: "caitlyn",
-    legendaryVariant: "Commandante",
-    mythicCharacterKey: "caitlyn",
-  },
-  {
-    legendaryCharacterKey: "ekko",
-    legendaryVariant: "Boy Savior",
-    mythicCharacterKey: "ekko",
-  },
-  {
-    legendaryCharacterKey: "jayce",
-    legendaryVariant: "Marteau Mercury",
-    mythicCharacterKey: "jayce",
-  },
-  {
-    legendaryCharacterKey: "viktor",
-    legendaryVariant: "Apôtre du progrès",
-    mythicCharacterKey: "viktor",
-  },
-  {
-    legendaryCharacterKey: "mel",
-    legendaryVariant: "Mage révélée",
-    mythicCharacterKey: "mel",
-  },
-  {
-    legendaryCharacterKey: "silco",
-    legendaryVariant: "Père de Jinx",
-    mythicCharacterKey: "silco",
-  },
-  {
-    legendaryCharacterKey: "warwick",
-    legendaryVariant: "Bête de Zaun",
-    mythicCharacterKey: "warwick",
-  },
-  {
-    legendaryCharacterKey: "ambessa",
-    legendaryVariant: "Louve de Noxus",
-    mythicCharacterKey: "ambessa",
-  },
-  {
-    legendaryCharacterKey: "leblanc",
-    legendaryVariant: "Rose Noire",
-    mythicCharacterKey: "leblanc",
-  },
-]
