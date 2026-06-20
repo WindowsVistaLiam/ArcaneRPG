@@ -5,10 +5,10 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js")
-
 const { ObjectId } = require("mongodb")
-const arcaneCards = require("../../data/arcaneCards")
 
+const arcaneCards = require("../../data/arcaneCards")
+const fusionCards = require("../../data/fusionCards")
 const {
   getCardStats,
   getCardStatsWithUpgrade,
@@ -24,8 +24,14 @@ const {
   transferFragments,
   updateCombatStats,
 } = require("../../utils/cardBattle")
-
 const { progressQuest } = require("../../utils/quests")
+const {
+  getActiveEffect,
+  consumeFirstAvailableEffect,
+  formatEffectRemaining,
+} = require("../../utils/effects")
+
+const allCards = [...arcaneCards, ...fusionCards]
 
 const PVE_COOLDOWN_MS = 30 * 60 * 1000
 
@@ -47,9 +53,9 @@ const RARITY_EMOJIS = {
 
 const EFFECT_LABELS = {
   pve_reward_x2: "💠 Boost Récompense PVE",
-  pve_insurance: "🧷 Assurance PVE",
+  pve_insurance: "🛡️ Assurance PVE",
   pvp_protection: "🛡️ Protection PVP",
-  economic_shield: "🔰 Bouclier économique",
+  economic_shield: "🛡️ Bouclier économique",
 }
 
 function normalizeText(text) {
@@ -62,13 +68,13 @@ function normalizeText(text) {
 function findCard(search) {
   const query = normalizeText(search)
 
-  const exactKey = arcaneCards.find((card) => normalizeText(card.key) === query)
+  const exactKey = allCards.find((card) => normalizeText(card.key) === query)
   if (exactKey) return exactKey
 
-  const exactName = arcaneCards.find((card) => normalizeText(card.name) === query)
+  const exactName = allCards.find((card) => normalizeText(card.name) === query)
   if (exactName) return exactName
 
-  return arcaneCards.find((card) => {
+  return allCards.find((card) => {
     return (
       normalizeText(card.key).includes(query) ||
       normalizeText(card.name).includes(query) ||
@@ -79,15 +85,13 @@ function findCard(search) {
 }
 
 function getCardFromCatalog(cardKey) {
-  return arcaneCards.find((card) => card.key === cardKey)
+  return allCards.find((card) => card.key === cardKey)
 }
 
 function buildCardFromPlayerCard(playerCard) {
   const catalogCard = getCardFromCatalog(playerCard.cardKey)
 
-  if (catalogCard) {
-    return catalogCard
-  }
+  if (catalogCard) return catalogCard
 
   return {
     key: playerCard.cardKey,
@@ -114,13 +118,8 @@ function formatRemainingTime(ms) {
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
 
-  if (hours > 0 && minutes > 0) {
-    return `${hours}h ${minutes}min`
-  }
-
-  if (hours > 0) {
-    return `${hours}h`
-  }
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`
+  if (hours > 0) return `${hours}h`
 
   return `${minutes}min`
 }
@@ -129,9 +128,7 @@ async function getDisplayName(client, guild, userId) {
   if (guild) {
     const member = await guild.members.fetch(userId).catch(() => null)
 
-    if (member) {
-      return member.displayName
-    }
+    if (member) return member.displayName
   }
 
   const user = await client.users.fetch(userId).catch(() => null)
@@ -146,10 +143,7 @@ async function checkPveCooldown(client, userId) {
   })
 
   if (!cooldown || !cooldown.lastCombatAt) {
-    return {
-      allowed: true,
-      remainingMs: 0,
-    }
+    return { allowed: true, remainingMs: 0 }
   }
 
   const lastCombatAt = new Date(cooldown.lastCombatAt).getTime()
@@ -180,80 +174,12 @@ async function setPveCooldown(client, userId) {
         createdAt: new Date(),
       },
     },
-    {
-      upsert: true,
-    }
+    { upsert: true }
   )
-}
-
-async function getActiveEffect(client, userId, effectKey) {
-  return client.db.collection("player_effects").findOne({
-    userId,
-    effectKey,
-    uses: {
-      $gt: 0,
-    },
-  })
-}
-
-async function consumeEffect(client, userId, effectKey) {
-  const effect = await getActiveEffect(client, userId, effectKey)
-
-  if (!effect) {
-    return false
-  }
-
-  if ((effect.uses || 0) <= 1) {
-    await client.db.collection("player_effects").deleteOne({
-      _id: effect._id,
-    })
-
-    return true
-  }
-
-  await client.db.collection("player_effects").updateOne(
-    {
-      _id: effect._id,
-    },
-    {
-      $inc: {
-        uses: -1,
-      },
-      $set: {
-        updatedAt: new Date(),
-      },
-    }
-  )
-
-  return true
-}
-
-async function consumeFirstAvailableEffect(client, userId, effectKeys) {
-  for (const effectKey of effectKeys) {
-    const effect = await getActiveEffect(client, userId, effectKey)
-
-    if (effect) {
-      await consumeEffect(client, userId, effectKey)
-
-      return {
-        protected: true,
-        effectKey,
-        label: EFFECT_LABELS[effectKey] || effect.label || effectKey,
-      }
-    }
-  }
-
-  return {
-    protected: false,
-    effectKey: null,
-    label: null,
-  }
 }
 
 async function getFavoriteCardKey(client, userId) {
-  const profile = await client.db.collection("player_profiles").findOne({
-    userId,
-  })
+  const profile = await client.db.collection("player_profiles").findOne({ userId })
 
   return profile?.favoriteCardKey || null
 }
@@ -269,10 +195,7 @@ async function getFavoriteCombatCard(client, userId) {
   const favoriteCardKey = await getFavoriteCardKey(client, userId)
 
   if (!favoriteCardKey) {
-    return {
-      card: null,
-      reason: "no_favorite",
-    }
+    return { card: null, reason: "no_favorite" }
   }
 
   const ownedCard = await getOwnedPlayerCard(client, userId, favoriteCardKey)
@@ -334,7 +257,7 @@ async function resolveChosenCombatCard(client, userId, search) {
       success: false,
       message:
         "❌ Ta carte favorite n'est plus valide ou tu ne la possèdes plus.\n" +
-        "Utilise `/favori carte:<nom>` pour définir une nouvelle carte favorite, ou indique une carte directement dans `/combat`.",
+        "Utilise `/favori carte:` pour définir une nouvelle carte favorite, ou indique une carte directement dans `/combat`.",
     }
   }
 
@@ -342,7 +265,7 @@ async function resolveChosenCombatCard(client, userId, search) {
     success: false,
     message:
       "❌ Tu n'as pas indiqué de carte et tu n'as aucune carte favorite définie.\n" +
-      "Utilise `/favori carte:<nom>` pour définir ta carte de combat par défaut, ou utilise `/combat ... carte:<nom>`.",
+      "Utilise `/favori carte:` pour définir ta carte de combat par défaut, ou utilise `/combat ... carte:`.",
   }
 }
 
@@ -350,21 +273,17 @@ function buildShortLogs(logs) {
   return logs
     .slice(0, 8)
     .map((log) => {
-      return `**Tour ${log.turn}** — ${log.attackerName} inflige **${log.damage}** dégâts à ${log.defenderName}. PV restants : **${log.defenderRemainingHp}**`
+      return `**Tour ${log.turn}** — ${log.attackerName} inflige **${log.damage}** dégâts à ${log.defenderName}.\nPV restants : **${log.defenderRemainingHp}**`
     })
     .join("\n")
 }
 
 async function getBestPlayerCard(client, userId) {
   const playerCards = await client.db.collection("player_cards")
-    .find({
-      userId,
-    })
+    .find({ userId })
     .toArray()
 
-  if (!playerCards.length) {
-    return null
-  }
+  if (!playerCards.length) return null
 
   let bestCard = null
   let bestPower = -1
@@ -386,25 +305,16 @@ async function getAutoPvpDefenseCard(client, userId) {
   const favorite = await getFavoriteCombatCard(client, userId)
 
   if (favorite.card) {
-    return {
-      card: favorite.card,
-      source: "favorite",
-    }
+    return { card: favorite.card, source: "favorite" }
   }
 
   const bestCard = await getBestPlayerCard(client, userId)
 
   if (bestCard) {
-    return {
-      card: bestCard,
-      source: "best",
-    }
+    return { card: bestCard, source: "best" }
   }
 
-  return {
-    card: null,
-    source: "none",
-  }
+  return { card: null, source: "none" }
 }
 
 function buildPveEmbed({
@@ -419,28 +329,28 @@ function buildPveEmbed({
   penalty,
   economyResult,
   rewardBoostUsed,
+  rewardBoostRemaining,
   protectionResult,
   playerStats,
   enemyStats,
 }) {
   const resolvedPlayerStats = playerStats || getCardStats(playerCard)
   const resolvedEnemyStats = enemyStats || getStatsForBattle(enemy)
-
-  const emoji = RARITY_EMOJIS[playerCard.rarity] || "🎴"
+  const emoji = RARITY_EMOJIS[playerCard.rarity] || ""
 
   let resultText = ""
 
   if (hasWon) {
     resultText =
-      `✅ **Victoire !** Tu gagnes 💠 **${reward}** fragment${reward > 1 ? "s" : ""}.` +
-      `${rewardBoostUsed ? `\n💠 Boost utilisé : **${EFFECT_LABELS.pve_reward_x2}**. Récompense de base : **${baseReward}**.` : ""}`
+      `✅ **Victoire !** Tu gagnes **${reward}** fragment${reward > 1 ? "s" : ""}.` +
+      `${rewardBoostUsed ? `\nBoost actif : **${EFFECT_LABELS.pve_reward_x2}**${rewardBoostRemaining ? ` (${rewardBoostRemaining} restantes)` : ""}. Récompense de base : **${baseReward}**.` : ""}`
   } else if (protectionResult?.protected) {
     resultText =
       `❌ **Défaite**, mais tu ne perds aucun fragment.\n` +
       `${protectionResult.label} a été consommé.`
   } else {
     resultText =
-      `❌ **Défaite.** Tu perds 💠 **${economyResult.removed}** fragment${economyResult.removed > 1 ? "s" : ""} sur ${penalty} possible${penalty > 1 ? "s" : ""}.`
+      `❌ **Défaite.** Tu perds **${economyResult.removed}** fragment${economyResult.removed > 1 ? "s" : ""} sur ${penalty} possible${penalty > 1 ? "s" : ""}.`
   }
 
   const embed = new EmbedBuilder()
@@ -464,7 +374,7 @@ function buildPveEmbed({
         inline: true,
       },
       {
-        name: `👾 ${enemy.name}`,
+        name: `👹 ${enemy.name}`,
         value:
           `Niveau : **${enemy.rarityLabel || enemy.rarity}**\n` +
           `❤️ PV : **${resolvedEnemyStats.hp}**\n` +
@@ -495,14 +405,10 @@ function buildPveEmbed({
         inline: false,
       }
     )
-    .setFooter({
-      text: "Cooldown PVE : 30 minutes",
-    })
+    .setFooter({ text: "Cooldown PVE : 30 minutes" })
     .setTimestamp()
 
-  if (playerCard.image) {
-    embed.setThumbnail(playerCard.image)
-  }
+  if (playerCard.image) embed.setThumbnail(playerCard.image)
 
   return embed
 }
@@ -517,7 +423,7 @@ function buildPvpChallengeEmbed({
   usedFavorite,
 }) {
   const stats = challengerStats || getCardStats(challengerCard)
-  const emoji = RARITY_EMOJIS[challengerCard.rarity] || "🎴"
+  const emoji = RARITY_EMOJIS[challengerCard.rarity] || ""
 
   const embed = new EmbedBuilder()
     .setTitle("⚔️ Défi PVP")
@@ -556,9 +462,7 @@ function buildPvpChallengeEmbed({
     })
     .setTimestamp()
 
-  if (challengerCard.image) {
-    embed.setThumbnail(challengerCard.image)
-  }
+  if (challengerCard.image) embed.setThumbnail(challengerCard.image)
 
   return embed
 }
@@ -592,20 +496,10 @@ async function buildPvpResultEmbed({
   const challengerName = await getDisplayName(client, guild, challengerId)
   const opponentName = await getDisplayName(client, guild, opponentId)
 
-  const challengerStats = await getCardStatsWithUpgrade(
-    client,
-    challengerId,
-    challengerCard
-  )
-
-  const opponentStats = await getCardStatsWithUpgrade(
-    client,
-    opponentId,
-    opponentCard
-  )
+  const challengerStats = await getCardStatsWithUpgrade(client, challengerId, challengerCard)
+  const opponentStats = await getCardStatsWithUpgrade(client, opponentId, opponentCard)
 
   const challengerWon = battle.winnerSide === "A"
-
   const winnerName = challengerWon ? challengerName : opponentName
   const loserName = challengerWon ? opponentName : challengerName
 
@@ -618,7 +512,7 @@ async function buildPvpResultEmbed({
     : `💠 **${transferResult.transferred}** fragment${transferResult.transferred > 1 ? "s" : ""} transféré${transferResult.transferred > 1 ? "s" : ""} du perdant vers le gagnant.`
 
   const embed = new EmbedBuilder()
-    .setTitle("🏆 Résultat du combat PVP")
+    .setTitle("⚔️ Résultat du combat PVP")
     .setColor(challengerWon ? 0x2ecc71 : 0xe67e22)
     .setDescription(
       `**${winnerName}** remporte le combat contre **${loserName}** !\n\n` +
@@ -674,9 +568,7 @@ async function buildPvpResultEmbed({
     )
     .setTimestamp()
 
-  if (battle.winner.image) {
-    embed.setThumbnail(battle.winner.image)
-  }
+  if (battle.winner.image) embed.setThumbnail(battle.winner.image)
 
   return embed
 }
@@ -685,7 +577,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("combat")
     .setDescription("Combattre avec tes cartes Arcane")
-
     .addSubcommand((subcommand) =>
       subcommand
         .setName("pve")
@@ -697,7 +588,6 @@ module.exports = {
             .setRequired(false)
         )
     )
-
     .addSubcommand((subcommand) =>
       subcommand
         .setName("pvp")
@@ -731,36 +621,17 @@ module.exports = {
       }
 
       const search = interaction.options.getString("carte")
-      const resolvedCard = await resolveChosenCombatCard(
-        client,
-        interaction.user.id,
-        search
-      )
+      const resolvedCard = await resolveChosenCombatCard(client, interaction.user.id, search)
 
       if (!resolvedCard.success) {
-        return interaction.editReply({
-          content: resolvedCard.message,
-        })
+        return interaction.editReply({ content: resolvedCard.message })
       }
 
       const playerCard = resolvedCard.card
-
-      const playerStats = await getCardStatsWithUpgrade(
-        client,
-        interaction.user.id,
-        playerCard
-      )
-
+      const playerStats = await getCardStatsWithUpgrade(client, interaction.user.id, playerCard)
       const enemy = generatePveEnemy(playerCard)
       const enemyStats = getStatsForBattle(enemy)
-
-      const battle = simulateBattleWithResolvedStats(
-        playerCard,
-        playerStats,
-        enemy,
-        enemyStats
-      )
-
+      const battle = simulateBattleWithResolvedStats(playerCard, playerStats, enemy, enemyStats)
       const hasWon = battle.winnerSide === "A"
 
       let reward = 0
@@ -768,6 +639,7 @@ module.exports = {
       let penalty = 0
       let economyResult = null
       let rewardBoostUsed = false
+      let rewardBoostRemaining = null
       let protectionResult = {
         protected: false,
         label: null,
@@ -778,16 +650,12 @@ module.exports = {
         baseReward = getPveWinReward(playerCard)
         reward = baseReward
 
-        const rewardBoost = await getActiveEffect(
-          client,
-          interaction.user.id,
-          "pve_reward_x2"
-        )
+        const rewardBoost = await getActiveEffect(client, interaction.user.id, "pve_reward_x2")
 
         if (rewardBoost) {
           reward = baseReward * 2
           rewardBoostUsed = true
-          await consumeEffect(client, interaction.user.id, "pve_reward_x2")
+          rewardBoostRemaining = formatEffectRemaining(rewardBoost)
         }
 
         economyResult = await addFragments(client, interaction.user.id, reward)
@@ -799,11 +667,11 @@ module.exports = {
         })
       } else {
         penalty = getPveLossPenalty(playerCard)
-
         protectionResult = await consumeFirstAvailableEffect(
           client,
           interaction.user.id,
-          ["pve_insurance", "economic_shield"]
+          ["pve_insurance", "economic_shield"],
+          EFFECT_LABELS
         )
 
         if (protectionResult.protected) {
@@ -820,7 +688,6 @@ module.exports = {
       }
 
       await setPveCooldown(client, interaction.user.id)
-
       await progressQuest(client, interaction.user.id, "pve_play").catch(console.error)
 
       if (hasWon) {
@@ -839,14 +706,13 @@ module.exports = {
         penalty,
         economyResult,
         rewardBoostUsed,
+        rewardBoostRemaining,
         protectionResult,
         playerStats,
         enemyStats,
       })
 
-      return interaction.editReply({
-        embeds: [embed],
-      })
+      return interaction.editReply({ embeds: [embed] })
     }
 
     if (subcommand === "pvp") {
@@ -869,16 +735,10 @@ module.exports = {
 
       await interaction.deferReply()
 
-      const resolvedCard = await resolveChosenCombatCard(
-        client,
-        interaction.user.id,
-        search
-      )
+      const resolvedCard = await resolveChosenCombatCard(client, interaction.user.id, search)
 
       if (!resolvedCard.success) {
-        return interaction.editReply({
-          content: resolvedCard.message,
-        })
+        return interaction.editReply({ content: resolvedCard.message })
       }
 
       const challengerCard = resolvedCard.card
@@ -890,11 +750,7 @@ module.exports = {
         })
       }
 
-      const challengerStats = await getCardStatsWithUpgrade(
-        client,
-        interaction.user.id,
-        challengerCard
-      )
+      const challengerStats = await getCardStatsWithUpgrade(client, interaction.user.id, challengerCard)
 
       const session = {
         type: "pvp",
@@ -910,18 +766,8 @@ module.exports = {
       }
 
       const result = await client.db.collection("combat_sessions").insertOne(session)
-
-      const challengerName = await getDisplayName(
-        client,
-        interaction.guild,
-        interaction.user.id
-      )
-
-      const opponentName = await getDisplayName(
-        client,
-        interaction.guild,
-        opponent.id
-      )
+      const challengerName = await getDisplayName(client, interaction.guild, interaction.user.id)
+      const opponentName = await getDisplayName(client, interaction.guild, opponent.id)
 
       const embed = buildPvpChallengeEmbed({
         challenger: interaction.user,
@@ -958,10 +804,7 @@ module.exports = {
     }
 
     const sessions = client.db.collection("combat_sessions")
-
-    const session = await sessions.findOne({
-      _id: new ObjectId(sessionId),
-    })
+    const session = await sessions.findOne({ _id: new ObjectId(sessionId) })
 
     if (!session) {
       return interaction.reply({
@@ -986,9 +829,7 @@ module.exports = {
 
     if (session.expiresAt && new Date(session.expiresAt).getTime() < Date.now()) {
       await sessions.updateOne(
-        {
-          _id: new ObjectId(sessionId),
-        },
+        { _id: new ObjectId(sessionId) },
         {
           $set: {
             status: "expired",
@@ -1006,9 +847,7 @@ module.exports = {
 
     if (action === "pvp_refuse") {
       await sessions.updateOne(
-        {
-          _id: new ObjectId(sessionId),
-        },
+        { _id: new ObjectId(sessionId) },
         {
           $set: {
             status: "refused",
@@ -1031,9 +870,7 @@ module.exports = {
 
       if (!challengerCard) {
         await sessions.updateOne(
-          {
-            _id: new ObjectId(sessionId),
-          },
+          { _id: new ObjectId(sessionId) },
           {
             $set: {
               status: "error",
@@ -1049,17 +886,11 @@ module.exports = {
         })
       }
 
-      const stillOwnsCard = await getOwnedPlayerCard(
-        client,
-        session.challengerId,
-        challengerCard.key
-      )
+      const stillOwnsCard = await getOwnedPlayerCard(client, session.challengerId, challengerCard.key)
 
       if (!stillOwnsCard) {
         await sessions.updateOne(
-          {
-            _id: new ObjectId(sessionId),
-          },
+          { _id: new ObjectId(sessionId) },
           {
             $set: {
               status: "cancelled",
@@ -1075,16 +906,11 @@ module.exports = {
         })
       }
 
-      const opponentAutoCard = await getAutoPvpDefenseCard(
-        client,
-        session.opponentId
-      )
+      const opponentAutoCard = await getAutoPvpDefenseCard(client, session.opponentId)
 
       if (!opponentAutoCard.card) {
         await sessions.updateOne(
-          {
-            _id: new ObjectId(sessionId),
-          },
+          { _id: new ObjectId(sessionId) },
           {
             $set: {
               status: "cancelled",
@@ -1101,38 +927,20 @@ module.exports = {
       }
 
       const opponentCard = opponentAutoCard.card
-
-      const challengerStats = await getCardStatsWithUpgrade(
-        client,
-        session.challengerId,
-        challengerCard
-      )
-
-      const opponentStats = await getCardStatsWithUpgrade(
-        client,
-        session.opponentId,
-        opponentCard
-      )
-
-      const battle = simulateBattleWithResolvedStats(
-        challengerCard,
-        challengerStats,
-        opponentCard,
-        opponentStats
-      )
-
+      const challengerStats = await getCardStatsWithUpgrade(client, session.challengerId, challengerCard)
+      const opponentStats = await getCardStatsWithUpgrade(client, session.opponentId, opponentCard)
+      const battle = simulateBattleWithResolvedStats(challengerCard, challengerStats, opponentCard, opponentStats)
       const challengerWon = battle.winnerSide === "A"
-
       const winnerId = challengerWon ? session.challengerId : session.opponentId
       const loserId = challengerWon ? session.opponentId : session.challengerId
       const winnerCard = challengerWon ? challengerCard : opponentCard
-
       const transferAmount = getPvpTransferAmount(winnerCard)
 
       const protectionResult = await consumeFirstAvailableEffect(
         client,
         loserId,
-        ["pvp_protection", "economic_shield"]
+        ["pvp_protection", "economic_shield"],
+        EFFECT_LABELS
       )
 
       let transferResult = null
@@ -1147,12 +955,7 @@ module.exports = {
           fromAfter: loserFragments,
         }
       } else {
-        transferResult = await transferFragments(
-          client,
-          loserId,
-          winnerId,
-          transferAmount
-        )
+        transferResult = await transferFragments(client, loserId, winnerId, transferAmount)
       }
 
       await updateCombatStats(client, winnerId, {
@@ -1172,9 +975,7 @@ module.exports = {
       await progressQuest(client, winnerId, "pvp_win").catch(console.error)
 
       await sessions.updateOne(
-        {
-          _id: new ObjectId(sessionId),
-        },
+        { _id: new ObjectId(sessionId) },
         {
           $set: {
             status: "completed",

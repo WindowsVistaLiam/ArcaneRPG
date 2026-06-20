@@ -8,6 +8,12 @@ const {
 
 const arcaneCards = require("../../data/arcaneCards")
 const { progressQuest } = require("../../utils/quests")
+const {
+  EFFECT_DURATION_MS,
+  getActiveEffect,
+  addTimedEffect,
+  formatEffectRemaining,
+} = require("../../utils/effects")
 
 const RARITY_WEIGHTS = {
   common: 800,
@@ -42,43 +48,22 @@ const FRAGMENTS_BY_RARITY = {
 }
 
 const CATEGORIES = {
-  packs: {
-    label: "🎁 Packs",
-    color: 0x5865f2,
-  },
-  recharges: {
-    label: "⏳ Recharges",
-    color: 0x3498db,
-  },
-  boosts: {
-    label: "🍀 Boosts",
-    color: 0x2ecc71,
-  },
-  protections: {
-    label: "🛡️ Protections",
-    color: 0xe67e22,
-  },
-  ameliorations: {
-    label: "⚙️ Améliorations",
-    color: 0x9b59b6,
-  },
-  cosmetiques: {
-    label: "🎖️ Cosmétiques",
-    color: 0xf1c40f,
-  },
-  effets: {
-    label: "📌 Effets actifs",
-    color: 0x1abc9c,
-  },
+  packs: { label: "🎴 Packs", color: 0x5865f2 },
+  recharges: { label: "⏳ Recharges", color: 0x3498db },
+  boosts: { label: "⚡ Boosts", color: 0x2ecc71 },
+  protections: { label: "🛡️ Protections", color: 0xe67e22 },
+  ameliorations: { label: "⚙️ Améliorations", color: 0x9b59b6 },
+  cosmetiques: { label: "🏷️ Cosmétiques", color: 0xf1c40f },
+  effets: { label: "✨ Effets actifs", color: 0x1abc9c },
 }
 
 const SHOP_ITEMS = [
-  // 🎁 PACKS
+  // PACKS
   {
     key: "common_pack",
     category: "packs",
     type: "pack",
-    emoji: "🎁",
+    emoji: "🎴",
     label: "Pack Commun+",
     price: 25,
     description: "Donne 1 carte aléatoire. Peut contenir toutes les raretés.",
@@ -128,7 +113,7 @@ const SHOP_ITEMS = [
     key: "zaun_pack",
     category: "packs",
     type: "pack",
-    emoji: "🧪",
+    emoji: "🟢",
     label: "Pack Zaun",
     price: 250,
     description: "Donne 1 carte liée à Zaun.",
@@ -158,7 +143,7 @@ const SHOP_ITEMS = [
     key: "shimmer_pack",
     category: "packs",
     type: "pack",
-    emoji: "💉",
+    emoji: "🧪",
     label: "Pack Shimmer",
     price: 350,
     description: "Donne 1 carte liée à Zaun, au Shimmer ou aux chem-barons.",
@@ -168,18 +153,18 @@ const SHOP_ITEMS = [
     key: "unique_random",
     category: "packs",
     type: "unique_card",
-    emoji: "🌟",
+    emoji: "✨",
     label: "Carte unique aléatoire",
     price: 1500,
     description: "Donne une carte que tu ne possèdes pas encore, si possible.",
   },
 
-  // ⏳ RECHARGES
+  // RECHARGES
   {
     key: "reset_tirage",
     category: "recharges",
     type: "reset_cooldown",
-    emoji: "🎲",
+    emoji: "🎴",
     label: "Recharge Tirage",
     price: 250,
     description: "Supprime ton cooldown de /tirage.",
@@ -206,95 +191,105 @@ const SHOP_ITEMS = [
     cooldowns: ["tirage", "pve"],
   },
 
-  // 🍀 BOOSTS
+  // BOOSTS 24H, NON CONSOMMÉS À L'UTILISATION
   {
     key: "draw_boost_rare",
     category: "boosts",
     type: "effect",
-    emoji: "🍀",
-    label: "Boost Rare",
+    emoji: "🔵",
+    label: "Boost Rare 24h",
     price: 300,
-    description: "Améliore ton prochain tirage. À brancher dans /tirage.",
+    description: "Pendant 24h, améliore tes chances de tirage vers les raretés rares et supérieures.",
     effectKey: "draw_boost_rare",
     effectType: "draw_boost",
-    uses: 1,
+    durationMs: EFFECT_DURATION_MS,
+    consumable: false,
   },
   {
     key: "draw_boost_epic",
     category: "boosts",
     type: "effect",
     emoji: "✨",
-    label: "Boost Épique",
+    label: "Boost Épique 24h",
     price: 750,
-    description: "Améliore fortement ton prochain tirage. À brancher dans /tirage.",
+    description: "Pendant 24h, améliore fortement tes chances de tirage vers les raretés épiques et supérieures.",
     effectKey: "draw_boost_epic",
     effectType: "draw_boost",
-    uses: 1,
+    durationMs: EFFECT_DURATION_MS,
+    consumable: false,
   },
   {
     key: "pve_reward_x2",
     category: "boosts",
     type: "effect",
     emoji: "💠",
-    label: "Boost Récompense PVE",
+    label: "Boost Récompense PVE 24h",
     price: 200,
-    description: "Double les fragments gagnés au prochain combat PVE gagné. À brancher dans /combat.",
+    description: "Pendant 24h, double les fragments gagnés quand tu remportes un combat PVE.",
     effectKey: "pve_reward_x2",
     effectType: "combat_boost",
-    uses: 1,
+    durationMs: EFFECT_DURATION_MS,
+    consumable: false,
   },
   {
     key: "shop_discount_10",
     category: "boosts",
     type: "effect",
     emoji: "🏷️",
-    label: "Boost Boutique -10%",
+    label: "Boost Boutique -10% 24h",
     price: 150,
-    description: "Réduit de 10% le prix de ton prochain achat boutique.",
+    description: "Pendant 24h, réduit de 10% le prix de tes achats boutique, sauf ce boost lui-même.",
     effectKey: "shop_discount_10",
     effectType: "shop_boost",
-    uses: 1,
+    durationMs: EFFECT_DURATION_MS,
+    consumable: false,
   },
 
-  // 🛡️ PROTECTIONS
+  // PROTECTIONS 24H AVEC UTILISATIONS LIMITÉES
   {
     key: "pvp_protection",
     category: "protections",
     type: "effect",
     emoji: "🛡️",
-    label: "Protection PVP",
+    label: "Protection PVP 24h",
     price: 150,
-    description: "Empêche une perte de fragments lors du prochain PVP perdu. À brancher dans /combat.",
+    description: "Pendant 24h, empêche 1 perte de fragments lors d'un PVP perdu.",
     effectKey: "pvp_protection",
     effectType: "protection",
     uses: 1,
+    durationMs: EFFECT_DURATION_MS,
+    consumable: true,
   },
   {
     key: "pve_insurance",
     category: "protections",
     type: "effect",
-    emoji: "🧷",
-    label: "Assurance PVE",
+    emoji: "🛡️",
+    label: "Assurance PVE 24h",
     price: 100,
-    description: "Empêche une perte de fragments lors du prochain PVE perdu. À brancher dans /combat.",
+    description: "Pendant 24h, empêche 1 perte de fragments lors d'un PVE perdu.",
     effectKey: "pve_insurance",
     effectType: "protection",
     uses: 1,
+    durationMs: EFFECT_DURATION_MS,
+    consumable: true,
   },
   {
     key: "economic_shield",
     category: "protections",
     type: "effect",
-    emoji: "🔰",
-    label: "Bouclier économique",
+    emoji: "🛡️",
+    label: "Bouclier économique 24h",
     price: 400,
-    description: "Protège contre 3 pertes de fragments. À brancher dans /combat.",
+    description: "Pendant 24h, protège contre 3 pertes de fragments.",
     effectKey: "economic_shield",
     effectType: "protection",
     uses: 3,
+    durationMs: EFFECT_DURATION_MS,
+    consumable: true,
   },
 
-  // ⚙️ AMÉLIORATIONS
+  // AMÉLIORATIONS
   {
     key: "upgrade_fragment",
     category: "ameliorations",
@@ -368,12 +363,12 @@ const SHOP_ITEMS = [
     quantity: 1,
   },
 
-  // 🎖️ COSMÉTIQUES
+  // COSMÉTIQUES
   {
     key: "title_collector",
     category: "cosmetiques",
     type: "cosmetic",
-    emoji: "🎖️",
+    emoji: "🏷️",
     label: "Titre : Collectionneur",
     price: 500,
     description: "Titre cosmétique pour ton futur profil collectionneur.",
@@ -397,7 +392,7 @@ const SHOP_ITEMS = [
     key: "title_zaun_merchant",
     category: "cosmetiques",
     type: "cosmetic",
-    emoji: "🧪",
+    emoji: "🟢",
     label: "Titre : Marchand de Zaun",
     price: 750,
     description: "Titre cosmétique lié à Zaun.",
@@ -421,7 +416,7 @@ const SHOP_ITEMS = [
     key: "badge_zaun",
     category: "cosmetiques",
     type: "cosmetic",
-    emoji: "🧪",
+    emoji: "🟢",
     label: "Badge Zaun",
     price: 800,
     description: "Badge cosmétique pour ton futur profil collectionneur.",
@@ -481,9 +476,7 @@ function chunkArray(array, size) {
 }
 
 async function getWalletFragments(client, userId) {
-  const wallet = await client.db.collection("player_wallets").findOne({
-    userId,
-  })
+  const wallet = await client.db.collection("player_wallets").findOne({ userId })
 
   return wallet?.fragments || 0
 }
@@ -492,24 +485,16 @@ async function addFragments(client, userId, amount) {
   if (amount <= 0) return
 
   await client.db.collection("player_wallets").updateOne(
+    { userId },
     {
-      userId,
-    },
-    {
-      $inc: {
-        fragments: amount,
-      },
-      $set: {
-        updatedAt: new Date(),
-      },
+      $inc: { fragments: amount },
+      $set: { updatedAt: new Date() },
       $setOnInsert: {
         userId,
         createdAt: new Date(),
       },
     },
-    {
-      upsert: true,
-    }
+    { upsert: true }
   )
 }
 
@@ -528,9 +513,7 @@ async function spendFragments(client, userId, amount) {
   const after = before - amount
 
   await client.db.collection("player_wallets").updateOne(
-    {
-      userId,
-    },
+    { userId },
     {
       $set: {
         userId,
@@ -541,9 +524,7 @@ async function spendFragments(client, userId, amount) {
         createdAt: new Date(),
       },
     },
-    {
-      upsert: true,
-    }
+    { upsert: true }
   )
 
   return {
@@ -565,12 +546,8 @@ async function userOwnsCard(client, userId, cardKey) {
 
 async function getOwnedCardKeys(client, userId) {
   const cards = await client.db.collection("player_cards")
-    .find({
-      userId,
-    })
-    .project({
-      cardKey: 1,
-    })
+    .find({ userId })
+    .project({ cardKey: 1 })
     .toArray()
 
   return new Set(cards.map((card) => card.cardKey))
@@ -613,18 +590,13 @@ function getCandidateCardsForItem(item, ownedCardKeys = null) {
 function pickWeightedCard(cards) {
   if (!cards.length) return null
 
-  const totalWeight = cards.reduce((total, card) => {
-    return total + (RARITY_WEIGHTS[card.rarity] || 1)
-  }, 0)
-
+  const totalWeight = cards.reduce((total, card) => total + (RARITY_WEIGHTS[card.rarity] || 1), 0)
   let random = Math.random() * totalWeight
 
   for (const card of cards) {
     random -= RARITY_WEIGHTS[card.rarity] || 1
 
-    if (random <= 0) {
-      return card
-    }
+    if (random <= 0) return card
   }
 
   return cards[cards.length - 1]
@@ -667,72 +639,8 @@ async function grantCard(client, userId, card) {
   }
 }
 
-async function getActiveEffect(client, userId, effectKey) {
-  return client.db.collection("player_effects").findOne({
-    userId,
-    effectKey,
-    uses: {
-      $gt: 0,
-    },
-  })
-}
-
 async function addEffect(client, userId, item) {
-  await client.db.collection("player_effects").updateOne(
-    {
-      userId,
-      effectKey: item.effectKey,
-    },
-    {
-      $inc: {
-        uses: item.uses || 1,
-      },
-      $set: {
-        userId,
-        effectKey: item.effectKey,
-        effectType: item.effectType,
-        label: item.label,
-        description: item.description,
-        updatedAt: new Date(),
-      },
-      $setOnInsert: {
-        createdAt: new Date(),
-      },
-    },
-    {
-      upsert: true,
-    }
-  )
-}
-
-async function consumeEffect(client, userId, effectKey) {
-  const effect = await getActiveEffect(client, userId, effectKey)
-
-  if (!effect) return false
-
-  if ((effect.uses || 0) <= 1) {
-    await client.db.collection("player_effects").deleteOne({
-      _id: effect._id,
-    })
-
-    return true
-  }
-
-  await client.db.collection("player_effects").updateOne(
-    {
-      _id: effect._id,
-    },
-    {
-      $inc: {
-        uses: -1,
-      },
-      $set: {
-        updatedAt: new Date(),
-      },
-    }
-  )
-
-  return true
+  return addTimedEffect(client, userId, item)
 }
 
 async function addItem(client, userId, item) {
@@ -742,9 +650,7 @@ async function addItem(client, userId, item) {
       itemKey: item.itemKey,
     },
     {
-      $inc: {
-        quantity: item.quantity || 1,
-      },
+      $inc: { quantity: item.quantity || 1 },
       $set: {
         userId,
         itemKey: item.itemKey,
@@ -755,9 +661,7 @@ async function addItem(client, userId, item) {
         createdAt: new Date(),
       },
     },
-    {
-      upsert: true,
-    }
+    { upsert: true }
   )
 }
 
@@ -784,9 +688,7 @@ async function addCosmetic(client, userId, item) {
 
 async function resetCooldowns(client, userId, cooldowns = []) {
   if (cooldowns.includes("tirage")) {
-    await client.db.collection("tirage_cooldowns").deleteOne({
-      userId,
-    })
+    await client.db.collection("tirage_cooldowns").deleteOne({ userId })
   }
 
   if (cooldowns.includes("pve")) {
@@ -799,10 +701,7 @@ async function resetCooldowns(client, userId, cooldowns = []) {
 
 function getEffectivePrice(item, hasShopDiscount) {
   if (!hasShopDiscount) return item.price
-
-  if (item.key === "shop_discount_10") {
-    return item.price
-  }
+  if (item.key === "shop_discount_10") return item.price
 
   return Math.max(1, Math.floor(item.price * 0.9))
 }
@@ -847,7 +746,6 @@ async function executePurchase(client, userId, itemKey) {
   const shopDiscount = await getActiveEffect(client, userId, "shop_discount_10")
   const hasShopDiscount = Boolean(shopDiscount)
   const finalPrice = getEffectivePrice(item, hasShopDiscount)
-
   const payment = await spendFragments(client, userId, finalPrice)
 
   if (!payment.success) {
@@ -860,11 +758,8 @@ async function executePurchase(client, userId, itemKey) {
     }
   }
 
-  let discountConsumed = false
-
-  if (hasShopDiscount && item.key !== "shop_discount_10") {
-    discountConsumed = await consumeEffect(client, userId, "shop_discount_10")
-  }
+  const discountApplied = hasShopDiscount && item.key !== "shop_discount_10"
+  const discountRemaining = shopDiscount ? formatEffectRemaining(shopDiscount) : null
 
   if (item.type === "pack" || item.type === "unique_card") {
     const grant = await grantCard(client, userId, selectedCard)
@@ -875,7 +770,8 @@ async function executePurchase(client, userId, itemKey) {
       item,
       payment,
       finalPrice,
-      discountConsumed,
+      discountApplied,
+      discountRemaining,
       type: "card",
       grant,
       walletAfter: after,
@@ -890,21 +786,24 @@ async function executePurchase(client, userId, itemKey) {
       item,
       payment,
       finalPrice,
-      discountConsumed,
+      discountApplied,
+      discountRemaining,
       type: "cooldown",
     }
   }
 
   if (item.type === "effect") {
-    await addEffect(client, userId, item)
+    const effect = await addEffect(client, userId, item)
 
     return {
       success: true,
       item,
       payment,
       finalPrice,
-      discountConsumed,
+      discountApplied,
+      discountRemaining,
       type: "effect",
+      effect,
     }
   }
 
@@ -916,7 +815,8 @@ async function executePurchase(client, userId, itemKey) {
       item,
       payment,
       finalPrice,
-      discountConsumed,
+      discountApplied,
+      discountRemaining,
       type: "item",
     }
   }
@@ -929,7 +829,8 @@ async function executePurchase(client, userId, itemKey) {
       item,
       payment,
       finalPrice,
-      discountConsumed,
+      discountApplied,
+      discountRemaining,
       type: "cosmetic",
     }
   }
@@ -942,44 +843,44 @@ async function executePurchase(client, userId, itemKey) {
 
 async function buildEffectsEmbed(client, userId) {
   const fragments = await getWalletFragments(client, userId)
-
+  const now = new Date()
   const effects = await client.db.collection("player_effects")
     .find({
       userId,
-      uses: {
-        $gt: 0,
-      },
+      $or: [
+        { expiresAt: { $gt: now } },
+        { expiresAt: { $exists: false }, uses: { $gt: 0 } },
+        { expiresAt: null, uses: { $gt: 0 } },
+      ],
     })
     .toArray()
 
   const items = await client.db.collection("player_items")
-    .find({
-      userId,
-      quantity: {
-        $gt: 0,
-      },
-    })
+    .find({ userId, quantity: { $gt: 0 } })
     .toArray()
 
   const cosmetics = await client.db.collection("player_cosmetics")
-    .find({
-      userId,
-    })
+    .find({ userId })
     .toArray()
 
   const embed = new EmbedBuilder()
-    .setTitle("📌 Effets, objets et cosmétiques")
+    .setTitle("✨ Effets, objets et cosmétiques")
     .setColor(CATEGORIES.effets.color)
     .setDescription(`💠 Fragments disponibles : **${fragments}**`)
     .setTimestamp()
 
   embed.addFields({
-    name: "🍀 Boosts / protections actifs",
+    name: "⚡ Boosts / protections actifs",
     value: effects.length
       ? effects
-          .map((effect) => `**${effect.label}** — x${effect.uses}`)
-          .join("\n")
-          .slice(0, 1024)
+        .map((effect) => {
+          const usesText = typeof effect.uses === "number" ? ` — x${effect.uses}` : ""
+          const remaining = effect.expiresAt ? ` — ${formatEffectRemaining(effect)} restantes` : ""
+
+          return `**${effect.label || effect.effectKey}**${usesText}${remaining}`
+        })
+        .join("\n")
+        .slice(0, 1024)
       : "Aucun effet actif.",
     inline: false,
   })
@@ -988,20 +889,20 @@ async function buildEffectsEmbed(client, userId) {
     name: "⚙️ Objets d'amélioration",
     value: items.length
       ? items
-          .map((item) => `**${item.label}** — x${item.quantity}`)
-          .join("\n")
-          .slice(0, 1024)
+        .map((item) => `**${item.label}** — x${item.quantity}`)
+        .join("\n")
+        .slice(0, 1024)
       : "Aucun objet possédé.",
     inline: false,
   })
 
   embed.addFields({
-    name: "🎖️ Cosmétiques",
+    name: "🏷️ Cosmétiques",
     value: cosmetics.length
       ? cosmetics
-          .map((cosmetic) => `**${cosmetic.label}** (${cosmetic.cosmeticType})`)
-          .join("\n")
-          .slice(0, 1024)
+        .map((cosmetic) => `**${cosmetic.label}** (${cosmetic.cosmeticType})`)
+        .join("\n")
+        .slice(0, 1024)
       : "Aucun cosmétique possédé.",
     inline: false,
   })
@@ -1010,27 +911,20 @@ async function buildEffectsEmbed(client, userId) {
 }
 
 async function buildShopEmbed(client, userId, category) {
-  if (category === "effets") {
-    return buildEffectsEmbed(client, userId)
-  }
+  if (category === "effets") return buildEffectsEmbed(client, userId)
 
   const fragments = await getWalletFragments(client, userId)
   const shopDiscount = await getActiveEffect(client, userId, "shop_discount_10")
   const hasShopDiscount = Boolean(shopDiscount)
-
   const categoryData = CATEGORIES[category] || CATEGORIES.packs
   const items = getItemsByCategory(category)
-
   const lines = items.map((item) => {
     const finalPrice = getEffectivePrice(item, hasShopDiscount)
     const discountText = finalPrice < item.price
-      ? ` ~~${item.price}~~ → **${finalPrice}**`
-      : ` **${item.price}**`
+      ? `~~${item.price}~~ → **${finalPrice}**`
+      : `**${item.price}**`
 
-    return (
-      `${item.emoji} **${item.label}** — 💠${discountText}\n` +
-      `${item.description}`
-    )
+    return `${item.emoji} **${item.label}** — ${discountText}\n${item.description}`
   })
 
   const embed = new EmbedBuilder()
@@ -1038,12 +932,10 @@ async function buildShopEmbed(client, userId, category) {
     .setColor(categoryData.color)
     .setDescription(
       `💠 Tes fragments : **${fragments}**\n` +
-      `${hasShopDiscount ? "🏷️ Boost boutique actif : **-10% sur le prochain achat**\n" : ""}` +
+      `${hasShopDiscount ? `🏷️ Boost boutique actif : **-10%** (${formatEffectRemaining(shopDiscount)} restantes)\n` : ""}` +
       `\n${lines.join("\n\n") || "Aucun objet dans cette catégorie."}`
     )
-    .setFooter({
-      text: "Clique sur un bouton pour acheter. Les achats sont personnels.",
-    })
+    .setFooter({ text: "Clique sur un bouton pour acheter. Les achats sont personnels." })
     .setTimestamp()
 
   return embed
@@ -1083,7 +975,7 @@ function buildBuyRows(category) {
       row.addComponents(
         new ButtonBuilder()
           .setCustomId(`boutique:buy:${item.key}`)
-          .setLabel(`${item.emoji} ${item.label}`)
+          .setLabel(`${item.emoji} ${item.label}`.slice(0, 80))
           .setStyle(ButtonStyle.Success)
       )
     }
@@ -1103,20 +995,19 @@ function buildComponents(category) {
 
 function buildPurchaseEmbed(result) {
   const item = result.item
-
   const embed = new EmbedBuilder()
     .setTitle("✅ Achat effectué")
     .setColor(0x2ecc71)
     .setDescription(
       `${item.emoji} Tu as acheté : **${item.label}**\n` +
       `💠 Prix payé : **${result.finalPrice}** fragment${result.finalPrice > 1 ? "s" : ""}` +
-      `${result.discountConsumed ? "\n🏷️ Ton boost boutique -10% a été consommé." : ""}`
+      `${result.discountApplied ? `\n🏷️ Ton boost boutique -10% reste actif${result.discountRemaining ? ` encore **${result.discountRemaining}**` : ""}.` : ""}`
     )
     .setTimestamp()
 
   if (result.type === "card") {
     const card = result.grant.card
-    const emoji = RARITY_EMOJIS[card.rarity] || "🎴"
+    const emoji = RARITY_EMOJIS[card.rarity] || ""
 
     if (result.grant.result === "new") {
       embed.addFields({
@@ -1136,15 +1027,13 @@ function buildPurchaseEmbed(result) {
         value:
           `${emoji} **${card.name}**\n` +
           `Rareté : **${card.rarityLabel || card.rarity}**\n` +
-          `💠 Doublon converti en **${result.grant.fragments}** fragment${result.grant.fragments > 1 ? "s" : ""}.\n` +
+          `Doublon converti en **${result.grant.fragments}** fragment${result.grant.fragments > 1 ? "s" : ""}.\n` +
           `Fragments après achat : **${result.walletAfter}**`,
         inline: false,
       })
     }
 
-    if (card.image) {
-      embed.setImage(card.image)
-    }
+    if (card.image) embed.setImage(card.image)
   }
 
   if (result.type === "cooldown") {
@@ -1156,11 +1045,16 @@ function buildPurchaseEmbed(result) {
   }
 
   if (result.type === "effect") {
+    const remaining = result.effect ? formatEffectRemaining(result.effect) : "24h"
+    const usesText = typeof result.effect?.uses === "number"
+      ? `\nUtilisations disponibles : **${result.effect.uses}**`
+      : ""
+
     embed.addFields({
-      name: "🍀 Effet ajouté",
+      name: "⚡ Effet ajouté",
       value:
         `Effet : **${item.label}**\n` +
-        `Utilisations : **${item.uses || 1}**\n` +
+        `Durée restante : **${remaining}**${usesText}\n` +
         `Tu peux voir tes effets avec **/boutique categorie:Effets actifs**.`,
       inline: false,
     })
@@ -1176,7 +1070,7 @@ function buildPurchaseEmbed(result) {
 
   if (result.type === "cosmetic") {
     embed.addFields({
-      name: "🎖️ Cosmétique débloqué",
+      name: "🏷️ Cosmétique débloqué",
       value: `**${item.cosmeticLabel}**`,
       inline: false,
     })
@@ -1195,41 +1089,19 @@ module.exports = {
         .setDescription("Catégorie de la boutique")
         .setRequired(false)
         .addChoices(
-          {
-            name: "🎁 Packs",
-            value: "packs",
-          },
-          {
-            name: "⏳ Recharges",
-            value: "recharges",
-          },
-          {
-            name: "🍀 Boosts",
-            value: "boosts",
-          },
-          {
-            name: "🛡️ Protections",
-            value: "protections",
-          },
-          {
-            name: "⚙️ Améliorations",
-            value: "ameliorations",
-          },
-          {
-            name: "🎖️ Cosmétiques",
-            value: "cosmetiques",
-          },
-          {
-            name: "📌 Effets actifs",
-            value: "effets",
-          }
+          { name: "🎴 Packs", value: "packs" },
+          { name: "⏳ Recharges", value: "recharges" },
+          { name: "⚡ Boosts", value: "boosts" },
+          { name: "🛡️ Protections", value: "protections" },
+          { name: "⚙️ Améliorations", value: "ameliorations" },
+          { name: "🏷️ Cosmétiques", value: "cosmetiques" },
+          { name: "✨ Effets actifs", value: "effets" }
         )
     ),
 
   async execute(interaction, client) {
     const category = interaction.options.getString("categorie") || "packs"
     const safeCategory = CATEGORIES[category] ? category : "packs"
-
     const embed = await buildShopEmbed(client, interaction.user.id, safeCategory)
     const components = buildComponents(safeCategory)
 
@@ -1249,7 +1121,6 @@ module.exports = {
 
     if (action === "category") {
       const category = CATEGORIES[value] ? value : "packs"
-
       const embed = await buildShopEmbed(client, interaction.user.id, category)
       const components = buildComponents(category)
 

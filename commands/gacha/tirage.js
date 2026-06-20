@@ -5,10 +5,11 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js")
-
 const { ObjectId } = require("mongodb")
+
 const arcaneCards = require("../../data/arcaneCards")
 const { progressQuest } = require("../../utils/quests")
+const { getActiveEffect, formatEffectRemaining } = require("../../utils/effects")
 
 const TIRAGE_COOLDOWN_MS = 2 * 60 * 60 * 1000
 
@@ -65,27 +66,17 @@ function formatRemainingTime(ms) {
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
 
-  if (hours > 0 && minutes > 0) {
-    return `${hours}h ${minutes}min`
-  }
-
-  if (hours > 0) {
-    return `${hours}h`
-  }
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}min`
+  if (hours > 0) return `${hours}h`
 
   return `${minutes}min`
 }
 
 async function checkTirageCooldown(client, userId) {
-  const cooldown = await client.db.collection("tirage_cooldowns").findOne({
-    userId,
-  })
+  const cooldown = await client.db.collection("tirage_cooldowns").findOne({ userId })
 
   if (!cooldown || !cooldown.lastTirageAt) {
-    return {
-      allowed: true,
-      remainingMs: 0,
-    }
+    return { allowed: true, remainingMs: 0 }
   }
 
   const lastTirageAt = new Date(cooldown.lastTirageAt).getTime()
@@ -101,9 +92,7 @@ async function checkTirageCooldown(client, userId) {
 
 async function setTirageCooldown(client, userId) {
   await client.db.collection("tirage_cooldowns").updateOne(
-    {
-      userId,
-    },
+    { userId },
     {
       $set: {
         userId,
@@ -114,52 +103,8 @@ async function setTirageCooldown(client, userId) {
         createdAt: new Date(),
       },
     },
-    {
-      upsert: true,
-    }
+    { upsert: true }
   )
-}
-
-async function getActiveEffect(client, userId, effectKey) {
-  return client.db.collection("player_effects").findOne({
-    userId,
-    effectKey,
-    uses: {
-      $gt: 0,
-    },
-  })
-}
-
-async function consumeEffect(client, userId, effectKey) {
-  const effect = await getActiveEffect(client, userId, effectKey)
-
-  if (!effect) {
-    return false
-  }
-
-  if ((effect.uses || 0) <= 1) {
-    await client.db.collection("player_effects").deleteOne({
-      _id: effect._id,
-    })
-
-    return true
-  }
-
-  await client.db.collection("player_effects").updateOne(
-    {
-      _id: effect._id,
-    },
-    {
-      $inc: {
-        uses: -1,
-      },
-      $set: {
-        updatedAt: new Date(),
-      },
-    }
-  )
-
-  return true
 }
 
 async function getDrawBoost(client, userId) {
@@ -170,6 +115,7 @@ async function getDrawBoost(client, userId) {
       effectKey: "draw_boost_epic",
       label: "✨ Boost Épique",
       weights: BOOST_EPIC_WEIGHTS,
+      effect: epicBoost,
     }
   }
 
@@ -178,8 +124,9 @@ async function getDrawBoost(client, userId) {
   if (rareBoost) {
     return {
       effectKey: "draw_boost_rare",
-      label: "🍀 Boost Rare",
+      label: "🔵 Boost Rare",
       weights: BOOST_RARE_WEIGHTS,
+      effect: rareBoost,
     }
   }
 
@@ -187,6 +134,7 @@ async function getDrawBoost(client, userId) {
     effectKey: null,
     label: null,
     weights: DEFAULT_RARITY_WEIGHTS,
+    effect: null,
   }
 }
 
@@ -219,19 +167,13 @@ async function processTirageCards(client, userId, cards) {
   const walletsCollection = client.db.collection("player_wallets")
 
   const existingCards = await playerCardsCollection
-    .find({
-      userId,
-    })
-    .project({
-      cardKey: 1,
-    })
+    .find({ userId })
+    .project({ cardKey: 1 })
     .toArray()
 
   const ownedCardKeys = new Set(existingCards.map((card) => card.cardKey))
-
   const newCards = []
   const duplicateCards = []
-
   let totalFragmentsEarned = 0
 
   for (let i = 0; i < cards.length; i++) {
@@ -242,7 +184,6 @@ async function processTirageCards(client, userId, cards) {
       const fragments = FRAGMENTS_BY_RARITY[card.rarity] || 1
 
       totalFragmentsEarned += fragments
-
       duplicateCards.push({
         ...card,
         tirageIndex: i,
@@ -268,7 +209,6 @@ async function processTirageCards(client, userId, cards) {
     })
 
     ownedCardKeys.add(card.key)
-
     newCards.push({
       ...card,
       tirageIndex: i,
@@ -277,24 +217,16 @@ async function processTirageCards(client, userId, cards) {
 
   if (totalFragmentsEarned > 0) {
     await walletsCollection.updateOne(
+      { userId },
       {
-        userId,
-      },
-      {
-        $inc: {
-          fragments: totalFragmentsEarned,
-        },
-        $set: {
-          updatedAt: new Date(),
-        },
+        $inc: { fragments: totalFragmentsEarned },
+        $set: { updatedAt: new Date() },
         $setOnInsert: {
           userId,
           createdAt: new Date(),
         },
       },
-      {
-        upsert: true,
-      }
+      { upsert: true }
     )
   }
 
@@ -310,7 +242,7 @@ async function processTirageCards(client, userId, cards) {
 function buildNewCardEmbed(session) {
   const index = session.currentIndex
   const card = session.displayCards[index]
-  const emoji = RARITY_EMOJIS[card.rarity] || "🎴"
+  const emoji = RARITY_EMOJIS[card.rarity] || ""
 
   const embed = new EmbedBuilder()
     .setTitle(`${emoji} ${card.name}`)
@@ -333,21 +265,16 @@ function buildNewCardEmbed(session) {
         inline: true,
       }
     )
-    .setFooter({
-      text: "Nouvelle carte ajoutée à ton inventaire",
-    })
+    .setFooter({ text: "Nouvelle carte ajoutée à ton inventaire" })
     .setTimestamp()
 
-  if (card.image) {
-    embed.setImage(card.image)
-  }
+  if (card.image) embed.setImage(card.image)
 
   return embed
 }
 
 function buildDuplicatesSummaryEmbed(session) {
   const duplicateCards = session.duplicateCards || []
-
   const embed = new EmbedBuilder()
     .setTitle("♻️ Résumé du tirage")
     .setColor(0x5865f2)
@@ -356,9 +283,9 @@ function buildDuplicatesSummaryEmbed(session) {
   if (!duplicateCards.length) {
     embed.setDescription(
       "Aucun doublon dans ce tirage.\n\n" +
-      `🆕 Nouvelles cartes : **${session.newCardsCount}**\n` +
-      `💠 Fragments gagnés : **0**` +
-      `${session.drawBoostLabel ? `\n🍀 Boost utilisé : **${session.drawBoostLabel}**` : ""}`
+        `🎴 Nouvelles cartes : **${session.newCardsCount}**\n` +
+        `💠 Fragments gagnés : **0**` +
+        `${session.drawBoostLabel ? `\n⚡ Boost actif : **${session.drawBoostLabel}**${session.drawBoostRemaining ? ` (${session.drawBoostRemaining} restantes)` : ""}` : ""}`
     )
 
     return embed
@@ -384,24 +311,22 @@ function buildDuplicatesSummaryEmbed(session) {
 
   const duplicateList = Array.from(grouped.values())
     .map((entry) => {
-      const emoji = RARITY_EMOJIS[entry.rarity] || "🎴"
+      const emoji = RARITY_EMOJIS[entry.rarity] || ""
       const countText = entry.count > 1 ? ` x${entry.count}` : ""
 
-      return `${emoji} **${entry.name}**${countText} — 💠 ${entry.fragments}`
+      return `${emoji} **${entry.name}**${countText} — ${entry.fragments}`
     })
     .join("\n")
 
   embed.setDescription(
     `${duplicateList}\n\n` +
-    `🆕 Nouvelles cartes : **${session.newCardsCount}**\n` +
-    `♻️ Doublons : **${session.duplicatesCount}**\n` +
-    `💠 Fragments gagnés : **${session.totalFragmentsEarned}**` +
-    `${session.drawBoostLabel ? `\n🍀 Boost utilisé : **${session.drawBoostLabel}**` : ""}`
+      `🎴 Nouvelles cartes : **${session.newCardsCount}**\n` +
+      `♻️ Doublons : **${session.duplicatesCount}**\n` +
+      `💠 Fragments gagnés : **${session.totalFragmentsEarned}**` +
+      `${session.drawBoostLabel ? `\n⚡ Boost actif : **${session.drawBoostLabel}**${session.drawBoostRemaining ? ` (${session.drawBoostRemaining} restantes)` : ""}` : ""}`
   )
 
-  embed.setFooter({
-    text: "Les doublons ont été automatiquement convertis en fragments",
-  })
+  embed.setFooter({ text: "Les doublons ont été automatiquement convertis en fragments" })
 
   return embed
 }
@@ -409,9 +334,7 @@ function buildDuplicatesSummaryEmbed(session) {
 function buildCurrentEmbed(session) {
   const isSummaryPage = session.currentIndex === session.displayCards.length
 
-  if (isSummaryPage) {
-    return buildDuplicatesSummaryEmbed(session)
-  }
+  if (isSummaryPage) return buildDuplicatesSummaryEmbed(session)
 
   return buildNewCardEmbed(session)
 }
@@ -435,12 +358,7 @@ function buildButtons(sessionId, index, totalPages) {
 async function renderSession(interaction, session) {
   const embed = buildCurrentEmbed(session)
   const totalPages = session.displayCards.length + 1
-
-  const row = buildButtons(
-    session._id.toString(),
-    session.currentIndex,
-    totalPages
-  )
+  const row = buildButtons(session._id.toString(), session.currentIndex, totalPages)
 
   return interaction.update({
     embeds: [embed],
@@ -464,20 +382,10 @@ module.exports = {
     }
 
     const drawBoost = await getDrawBoost(client, interaction.user.id)
-
     const cards = generateTenCards(drawBoost.weights)
-
-    if (drawBoost.effectKey) {
-      await consumeEffect(client, interaction.user.id, drawBoost.effectKey)
-    }
-
-    const processed = await processTirageCards(
-      client,
-      interaction.user.id,
-      cards
-    )
-
+    const processed = await processTirageCards(client, interaction.user.id, cards)
     const displayCards = processed.newCards
+    const drawBoostRemaining = drawBoost.effect ? formatEffectRemaining(drawBoost.effect) : null
 
     const session = {
       userId: interaction.user.id,
@@ -489,6 +397,7 @@ module.exports = {
       totalFragmentsEarned: processed.totalFragmentsEarned,
       drawBoostKey: drawBoost.effectKey,
       drawBoostLabel: drawBoost.label,
+      drawBoostRemaining,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     }
@@ -504,21 +413,15 @@ module.exports = {
     }
 
     const totalPages = savedSession.displayCards.length + 1
-
     const embed = buildCurrentEmbed(savedSession)
-
-    const row = buildButtons(
-      savedSession._id.toString(),
-      savedSession.currentIndex,
-      totalPages
-    )
+    const row = buildButtons(savedSession._id.toString(), savedSession.currentIndex, totalPages)
 
     return interaction.reply({
       content:
-        `🎲 Tirage des 6 cartes terminé.\n` +
-        `${drawBoost.label ? `🍀 Boost consommé : **${drawBoost.label}**\n` : ""}` +
-        `🆕 **${savedSession.newCardsCount}** nouvelle${savedSession.newCardsCount > 1 ? "s" : ""} carte${savedSession.newCardsCount > 1 ? "s" : ""} ajoutée${savedSession.newCardsCount > 1 ? "s" : ""}.\n` +
-        `♻️ **${savedSession.duplicatesCount}** doublon${savedSession.duplicatesCount > 1 ? "s" : ""} converti${savedSession.duplicatesCount > 1 ? "s" : ""} en 💠 **${savedSession.totalFragmentsEarned}** fragment${savedSession.totalFragmentsEarned > 1 ? "s" : ""}.`,
+        `🎴 Tirage des 6 cartes terminé.\n` +
+        `${drawBoost.label ? `⚡ Boost actif : **${drawBoost.label}**${drawBoostRemaining ? ` (${drawBoostRemaining} restantes)` : ""}\n` : ""}` +
+        `✅ **${savedSession.newCardsCount}** nouvelle${savedSession.newCardsCount > 1 ? "s" : ""} carte${savedSession.newCardsCount > 1 ? "s" : ""} ajoutée${savedSession.newCardsCount > 1 ? "s" : ""}.\n` +
+        `♻️ **${savedSession.duplicatesCount}** doublon${savedSession.duplicatesCount > 1 ? "s" : ""} converti${savedSession.duplicatesCount > 1 ? "s" : ""} en **${savedSession.totalFragmentsEarned}** fragment${savedSession.totalFragmentsEarned > 1 ? "s" : ""}.`,
       embeds: [embed],
       components: [row],
     })
@@ -539,10 +442,7 @@ module.exports = {
     }
 
     const sessions = client.db.collection("tirage_sessions")
-
-    const session = await sessions.findOne({
-      _id: new ObjectId(sessionId),
-    })
+    const session = await sessions.findOne({ _id: new ObjectId(sessionId) })
 
     if (!session) {
       return interaction.reply({
@@ -571,14 +471,8 @@ module.exports = {
       const newIndex = Math.max(0, session.currentIndex - 1)
 
       await sessions.updateOne(
-        {
-          _id: new ObjectId(sessionId),
-        },
-        {
-          $set: {
-            currentIndex: newIndex,
-          },
-        }
+        { _id: new ObjectId(sessionId) },
+        { $set: { currentIndex: newIndex } }
       )
 
       session.currentIndex = newIndex
@@ -590,14 +484,8 @@ module.exports = {
       const newIndex = Math.min(totalPages - 1, session.currentIndex + 1)
 
       await sessions.updateOne(
-        {
-          _id: new ObjectId(sessionId),
-        },
-        {
-          $set: {
-            currentIndex: newIndex,
-          },
-        }
+        { _id: new ObjectId(sessionId) },
+        { $set: { currentIndex: newIndex } }
       )
 
       session.currentIndex = newIndex
