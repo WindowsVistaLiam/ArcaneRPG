@@ -30,7 +30,7 @@ const RARITY_CONFIG = {
     bossName: "Renata Glasc",
     specialty: "Vitesse",
     description: "Renata Glasc enchaîne rapidement les attaques et met la pression sur toute l'équipe.",
-    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/bosses/renata_glasc.png",
+    image: "https://media.discordapp.net/attachments/1377263609029333124/1518328826805883001/91c2b66b19c0934a356d671edee063dd.png",
     hpFactor: 0.95,
     attackFactor: 0.8,
     defenseFactor: 0.7,
