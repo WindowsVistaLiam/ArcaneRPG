@@ -27,64 +27,78 @@ const RARITY_CONFIG = {
     label: "Commun",
     emoji: "⚪",
     color: 0x95a5a6,
-    bossName: "Videur du Last Drop",
-    description: "Un adversaire solide, parfait pour tester une équipe.",
-    hpFactor: 0.9,
-    attackFactor: 0.75,
-    defenseFactor: 0.65,
-    speedFactor: 0.7,
+    bossName: "Renata Glasc",
+    specialty: "Vitesse",
+    description: "Renata Glasc enchaîne rapidement les attaques et met la pression sur toute l'équipe.",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/bosses/renata_glasc.png",
+    hpFactor: 0.95,
+    attackFactor: 0.8,
+    defenseFactor: 0.7,
+    speedFactor: 1.35,
     minReward: 80,
     maxReward: 130,
   },
+
   rare: {
     label: "Rare",
     emoji: "🔵",
     color: 0x3498db,
-    bossName: "Baron de Zaun",
-    description: "Un chef de gang dangereux qui frappe vite et fort.",
-    hpFactor: 1.05,
-    attackFactor: 0.9,
-    defenseFactor: 0.8,
-    speedFactor: 0.85,
+    bossName: "Zac",
+    specialty: "Tank",
+    description: "Zac absorbe énormément de dégâts et reste difficile à faire tomber.",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/bosses/zac.png",
+    hpFactor: 1.45,
+    attackFactor: 0.8,
+    defenseFactor: 1.25,
+    speedFactor: 0.75,
     minReward: 160,
     maxReward: 260,
   },
+
   epic: {
     label: "Épique",
     emoji: "🟣",
     color: 0x9b59b6,
-    bossName: "Prototype Hextech instable",
-    description: "Une machine imprévisible, alimentée par une énergie instable.",
-    hpFactor: 1.25,
-    attackFactor: 1.05,
-    defenseFactor: 0.95,
-    speedFactor: 0.95,
+    bossName: "Twitch",
+    specialty: "Dégâts",
+    description: "Twitch frappe fort et peut punir très vite une équipe mal préparée.",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/bosses/twitch.png",
+    hpFactor: 1.1,
+    attackFactor: 1.4,
+    defenseFactor: 0.8,
+    speedFactor: 1.0,
     minReward: 320,
     maxReward: 500,
   },
+
   legendary: {
     label: "Légendaire",
     emoji: "🟡",
     color: 0xf1c40f,
-    bossName: "Commandante noxienne",
-    description: "Une combattante d'élite capable de punir les erreurs d'équipe.",
-    hpFactor: 1.5,
-    attackFactor: 1.2,
-    defenseFactor: 1.1,
-    speedFactor: 1.05,
+    bossName: "Urgot",
+    specialty: "Dégâts et vitesse",
+    description: "Urgot combine une puissance brutale avec une cadence très dangereuse.",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/bosses/urgot.png",
+    hpFactor: 1.35,
+    attackFactor: 1.45,
+    defenseFactor: 1.0,
+    speedFactor: 1.2,
     minReward: 650,
     maxReward: 950,
   },
+
   mythic: {
     label: "Mythique",
     emoji: "🔴",
     color: 0xe74c3c,
-    bossName: "Anomalie du Hexcore",
-    description: "Une entité mythique. Coordination obligatoire.",
-    hpFactor: 1.85,
-    attackFactor: 1.4,
+    bossName: "Janna",
+    specialty: "Polyvalente",
+    description: "Janna excelle partout : survie, pression, vitesse et contrôle du combat.",
+    image: "https://raw.githubusercontent.com/WindowsVistaLiam/ArcaneRPG/main/images/bosses/janna.png",
+    hpFactor: 1.65,
+    attackFactor: 1.35,
     defenseFactor: 1.25,
-    speedFactor: 1.2,
+    speedFactor: 1.25,
     minReward: 1200,
     maxReward: 1800,
   },
@@ -345,11 +359,12 @@ function buildBattleEmbed(session, extraLogs = []) {
     ? extraLogs.slice(-8).join("\n")
     : (session.logs || []).slice(-8).join("\n") || "Le combat vient de commencer."
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`${config.emoji} Boss ${config.label} — ${boss.name}`)
     .setColor(config.color)
     .setDescription(
       `**Tour ${session.round || 1}/${MAX_ROUNDS}**\n\n` +
+      `**Spécialité :** ${config.specialty}\n` +
       `Boss : ❤️ **${Math.max(0, boss.currentHp)}/${boss.maxHp}** ${getHpBar(boss.currentHp, boss.maxHp)}\n` +
       `⚔️ ATK : **${boss.attack}** — 🛡️ DEF : **${boss.defense}** — 💨 VIT : **${boss.speed}**\n\n` +
       `Joueurs vivants : **${alivePlayers.length}/${session.players.length}**`
@@ -370,6 +385,12 @@ function buildBattleEmbed(session, extraLogs = []) {
       text: "Chaque joueur vivant choisit une action. Le tour se résout quand tout le monde a joué.",
     })
     .setTimestamp()
+
+  if (config.image) {
+    embed.setThumbnail(config.image)
+  }
+
+  return embed
 }
 
 function buildBattleRows(sessionId, disabled = false) {
@@ -397,6 +418,7 @@ function buildBattleRows(sessionId, disabled = false) {
 async function buildFinalEmbed(client, session, victory, rewardResults = []) {
   const config = getBossConfig(session.rarity)
   const boss = session.boss
+
   const damageRanking = [...(session.players || [])]
     .sort((a, b) => (b.damageDealt || 0) - (a.damageDealt || 0))
     .map((player, index) => {
@@ -412,7 +434,7 @@ async function buildFinalEmbed(client, session, victory, rewardResults = []) {
       ? "Aucune récompense distribuée."
       : "Aucune récompense : le boss n'a pas été vaincu."
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(victory ? "🏆 Boss vaincu !" : "💀 Échec du combat de boss")
     .setColor(victory ? 0x2ecc71 : 0xe74c3c)
     .setDescription(
@@ -425,6 +447,7 @@ async function buildFinalEmbed(client, session, victory, rewardResults = []) {
         name: "Boss",
         value:
           `${config.emoji} Rareté : **${config.label}**\n` +
+          `🧠 Spécialité : **${config.specialty}**\n` +
           `❤️ PV restants : **${Math.max(0, boss.currentHp)}/${boss.maxHp}**\n` +
           `Tours joués : **${session.round || 1}/${MAX_ROUNDS}**`,
         inline: false,
@@ -441,6 +464,12 @@ async function buildFinalEmbed(client, session, victory, rewardResults = []) {
       }
     )
     .setTimestamp()
+
+  if (config.image) {
+    embed.setThumbnail(config.image)
+  }
+
+  return embed
 }
 
 async function updateBossMessage(client, session, payload) {
@@ -1003,10 +1032,53 @@ module.exports = {
       _id: result.insertedId,
     }
 
-    const embed = buildLobbyEmbed({
-      session: savedSession,
-      clientUser: interaction.user,
+    function buildLobbyEmbed({ session, clientUser }) {
+  const config = getBossConfig(session.rarity)
+  const players = session.players || []
+  const remainingMs = new Date(session.joinEndsAt).getTime() - Date.now()
+
+  const playerLines = players.length
+    ? players.map((player, index) => {
+        return `**${index + 1}.** <@${player.userId}> — ⭐ **${player.cardName}**`
+      }).join("\n")
+    : "Aucun joueur inscrit pour le moment."
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${config.emoji} Boss ${config.label} — ${config.bossName}`)
+    .setColor(config.color)
+    .setDescription(
+      `${config.description}\n\n` +
+      `**Spécialité :** ${config.specialty}\n` +
+      `Les joueurs utilisent leur **carte favorite**.\n` +
+      `Minimum : **${MIN_PLAYERS}** joueurs — Maximum : **${MAX_PLAYERS}** joueurs.\n` +
+      `Temps restant pour rejoindre : **${formatRemainingTime(remainingMs)}**.`
+    )
+    .addFields(
+      {
+        name: `Participants ${players.length}/${MAX_PLAYERS}`,
+        value: playerLines,
+        inline: false,
+      },
+      {
+        name: "Actions en combat",
+        value:
+          "⚔️ **Attaquer** : inflige des dégâts au boss.\n" +
+          "🛡️ **Défendre** : réduit fortement les dégâts reçus.\n" +
+          "💨 **Esquiver** : tente d'éviter complètement l'attaque du boss.",
+        inline: false,
+      }
+    )
+    .setFooter({
+      text: clientUser ? `Boss lancé par ${clientUser.username}` : "Événement boss",
     })
+    .setTimestamp()
+
+  if (config.image) {
+    embed.setThumbnail(config.image)
+  }
+
+  return embed
+}
 
     const message = await interaction.editReply({
       content: "📣 Un combat de boss est ouvert ! Cliquez sur **Rejoindre** pour participer.",
