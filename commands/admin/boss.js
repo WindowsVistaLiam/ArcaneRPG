@@ -159,18 +159,6 @@ function buildCardFromPlayerCard(playerCard) {
   }
 }
 
-async function getDisplayName(client, guild, userId) {
-  if (guild) {
-    const member = await guild.members.fetch(userId).catch(() => null)
-
-    if (member) return member.displayName
-  }
-
-  const user = await client.users.fetch(userId).catch(() => null)
-
-  return user ? user.username : `Utilisateur ${userId}`
-}
-
 async function getFavoriteCardKey(client, userId) {
   const profile = await client.db.collection("player_profiles").findOne({ userId })
 
@@ -275,17 +263,19 @@ function buildLobbyEmbed({ session, clientUser }) {
   const config = getBossConfig(session.rarity)
   const players = session.players || []
   const remainingMs = new Date(session.joinEndsAt).getTime() - Date.now()
+
   const playerLines = players.length
     ? players.map((player, index) => {
         return `**${index + 1}.** <@${player.userId}> — ⭐ **${player.cardName}**`
       }).join("\n")
     : "Aucun joueur inscrit pour le moment."
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`${config.emoji} Boss ${config.label} — ${config.bossName}`)
     .setColor(config.color)
     .setDescription(
       `${config.description}\n\n` +
+      `**Spécialité :** ${config.specialty}\n` +
       `Les joueurs utilisent leur **carte favorite**.\n` +
       `Minimum : **${MIN_PLAYERS}** joueurs — Maximum : **${MAX_PLAYERS}** joueurs.\n` +
       `Temps restant pour rejoindre : **${formatRemainingTime(remainingMs)}**.`
@@ -309,6 +299,12 @@ function buildLobbyEmbed({ session, clientUser }) {
       text: clientUser ? `Boss lancé par ${clientUser.username}` : "Événement boss",
     })
     .setTimestamp()
+
+  if (config.image) {
+    embed.setThumbnail(config.image)
+  }
+
+  return embed
 }
 
 function buildLobbyRows(sessionId, disabled = false) {
@@ -484,13 +480,6 @@ async function updateBossMessage(client, session, payload) {
   await message.edit(payload).catch(() => null)
 
   return true
-}
-
-async function getSession(client, sessionId) {
-  const objectId = getSessionObjectId(sessionId)
-  if (!objectId) return null
-
-  return client.db.collection("boss_sessions").findOne({ _id: objectId })
 }
 
 async function startBossSession(client, sessionId, options = {}) {
@@ -1027,58 +1016,16 @@ module.exports = {
 
     const result = await client.db.collection("boss_sessions").insertOne(session)
     const sessionId = result.insertedId.toString()
+
     const savedSession = {
       ...session,
       _id: result.insertedId,
     }
 
-    function buildLobbyEmbed({ session, clientUser }) {
-  const config = getBossConfig(session.rarity)
-  const players = session.players || []
-  const remainingMs = new Date(session.joinEndsAt).getTime() - Date.now()
-
-  const playerLines = players.length
-    ? players.map((player, index) => {
-        return `**${index + 1}.** <@${player.userId}> — ⭐ **${player.cardName}**`
-      }).join("\n")
-    : "Aucun joueur inscrit pour le moment."
-
-  const embed = new EmbedBuilder()
-    .setTitle(`${config.emoji} Boss ${config.label} — ${config.bossName}`)
-    .setColor(config.color)
-    .setDescription(
-      `${config.description}\n\n` +
-      `**Spécialité :** ${config.specialty}\n` +
-      `Les joueurs utilisent leur **carte favorite**.\n` +
-      `Minimum : **${MIN_PLAYERS}** joueurs — Maximum : **${MAX_PLAYERS}** joueurs.\n` +
-      `Temps restant pour rejoindre : **${formatRemainingTime(remainingMs)}**.`
-    )
-    .addFields(
-      {
-        name: `Participants ${players.length}/${MAX_PLAYERS}`,
-        value: playerLines,
-        inline: false,
-      },
-      {
-        name: "Actions en combat",
-        value:
-          "⚔️ **Attaquer** : inflige des dégâts au boss.\n" +
-          "🛡️ **Défendre** : réduit fortement les dégâts reçus.\n" +
-          "💨 **Esquiver** : tente d'éviter complètement l'attaque du boss.",
-        inline: false,
-      }
-    )
-    .setFooter({
-      text: clientUser ? `Boss lancé par ${clientUser.username}` : "Événement boss",
+    const embed = buildLobbyEmbed({
+      session: savedSession,
+      clientUser: interaction.user,
     })
-    .setTimestamp()
-
-  if (config.image) {
-    embed.setThumbnail(config.image)
-  }
-
-  return embed
-}
 
     const message = await interaction.editReply({
       content: "📣 Un combat de boss est ouvert ! Cliquez sur **Rejoindre** pour participer.",
